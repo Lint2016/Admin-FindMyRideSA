@@ -1,0 +1,125 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Dashboard | FindMyRideSA Admin</title>
+    <link rel="shortcut icon" href="assets/findMyRideSA2.png" type="image/x-icon">
+    <link rel="stylesheet" href="css/styles.css">
+    <!-- Lucide Icons -->
+    <script src="https://unpkg.com/lucide@latest"></script>
+</head>
+
+<body class="hidden" id="appBody">
+    <div class="admin-layout">
+        <!-- Sidebar -->
+        <aside class="sidebar">
+            <div class="sidebar-logo">FindMyRideSA</div>
+            <nav class="nav-list">
+                <li class="nav-item">
+                    <a href="dashboard.html" class="nav-link active" id="filter-dashboard">
+                        <i data-lucide="layout-dashboard"></i> Dashboard
+                    </a>
+                </li>
+                <li class="nav-item">
+                    <a href="#" class="nav-link" id="filter-pending">
+                        <i data-lucide="user-plus"></i> Pending Providers
+                    </a>
+                </li>
+                <li class="nav-item">
+                    <a href="#" class="nav-link" id="filter-active">
+                        <i data-lucide="users"></i> Active Providers
+                    </a>
+                </li>
+                <li class="nav-item">
+                    <a href="#" class="nav-link" id="filter-payments">
+                        <i data-lucide="credit-card"></i> Payments
+                    </a>
+                </li>
+            </nav>
+            <div class="sidebar-footer">
+                <a href="#" id="logoutBtn" class="nav-link">
+                    <i data-lucide="log-out"></i> Logout
+                </a>
+            </div>
+        </aside>
+
+        <!-- Main Content -->
+        <main class="main-content">
+            <header class="page-header">
+                <div>
+                    <h1 class="page-title" id="page-title">Overview</h1>
+                    <p class="text-muted" style="font-size: 0.875rem;">Welcome back, Admin</p>
+                </div>
+                <div class="header-actions">
+                    <span id="admin-email" style="font-size: 0.875rem; font-weight: 500; margin-right: 1rem;"></span>
+                </div>
+            </header>
+
+            <!-- Stats Grid -->
+            <section class="stats-grid">
+                <div class="stat-card">
+                    <div class="stat-label">Total Providers</div>
+                    <div class="stat-value" id="stat-total">0</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-label">Pending Approvals</div>
+                    <div class="stat-value" id="stat-pending" style="color: var(--status-pending);">0</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-label">Active Providers</div>
+                    <div class="stat-value" id="stat-active" style="color: var(--status-active);">0</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-label">Pending Payments</div>
+                    <div class="stat-value" id="stat-payments" style="color: var(--status-info);">0</div>
+                </div>
+            </section>
+
+            <!-- Recent Activity / Pending List -->
+            <section class="card-table">
+                <div
+                    style="padding: 1.5rem; border-bottom: 1px solid var(--border-color); display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 1rem;">
+                    <h2 style="font-size: 1.125rem; font-weight: 700;" id="table-title">Recent Provider Registrations
+                    </h2>
+
+                    <div id="search-wrapper" style="display: none; position: relative; width: 300px;">
+                        <i data-lucide="search"
+                            style="position: absolute; left: 0.75rem; top: 50%; transform: translateY(-50%); width: 16px; height: 16px; color: var(--text-muted);"></i>
+                        <input type="text" id="searchInput" placeholder="Search name or phone..."
+                            style="padding: 0.5rem 0.5rem 0.5rem 2.25rem; font-size: 0.875rem; border: 1px solid var(--border-color); border-radius: var(--radius-md); width: 100%; outline: none; border: 1px solid var(--border-color);">
+                    </div>
+                </div>
+                <table id="mainTable">
+                    <thead id="tableHead">
+                        <tr>
+                            <th>Provider Name</th>
+                            <th>Service Area</th>
+                            <th>Source</th>
+                            <th>Payment</th>
+                            <th>Status</th>
+                            <th>Action</th>
+                        </tr>
+                    </thead>
+                    <tbody id="providerTableBody">
+                        <!-- Data will be injected here -->
+                        <tr>
+                            <td colspan="6" style="text-align: center; padding: 2rem; color: var(--text-muted);">
+                                Loading provider data...
+                            </td>
+                        </tr>
+                    </tbody>
+                </table>
+            </section>
+        </main>
+    </div>
+
+    <!-- Scripts -->
+    <script type="module" src="js/app.js"></script>
+    <script>
+        lucide.createIcons();
+    </script>
+</body>
+
+</html>
