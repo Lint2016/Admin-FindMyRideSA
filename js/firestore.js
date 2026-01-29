@@ -116,3 +116,42 @@ export async function updateProviderStatus(id, updates) {
     }
 }
 
+/**
+ * Fetches reviews for a specific provider
+ */
+export async function getProviderReviews(providerId) {
+    try {
+        const reviewsRef = collection(db, "reviews");
+        const q = query(
+            reviewsRef,
+            where("providerId", "==", providerId),
+            orderBy("createdAt", "desc")
+        );
+
+        const snapshot = await getDocs(q);
+        return snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+    } catch (error) {
+        console.error("Error fetching reviews:", error);
+        // Fallback if index is missing
+        if (error.code === 'failed-precondition') {
+            console.warn("Missing index for reviews query, falling back to client-side sort");
+            try {
+                const reviewsRef = collection(db, "reviews");
+                const q = query(reviewsRef, where("providerId", "==", providerId));
+                const snapshot = await getDocs(q);
+                const reviews = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+                // Client-side sort
+                return reviews.sort((a, b) => {
+                    const timeA = a.createdAt?.seconds || 0;
+                    const timeB = b.createdAt?.seconds || 0;
+                    return timeB - timeA;
+                });
+            } catch (retryError) {
+                console.error("Retry failed:", retryError);
+                return [];
+            }
+        }
+        return [];
+    }
+}
+

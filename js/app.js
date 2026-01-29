@@ -1,6 +1,6 @@
 // Main Application Controller
 import { login, logout, initAuthGuard } from "./auth.js";
-import { getDashboardMetrics, getRecentProviders, getProviderById, updateProviderStatus } from "./firestore.js";
+import { getDashboardMetrics, getRecentProviders, getProviderById, updateProviderStatus, getProviderReviews } from "./firestore.js";
 
 // DOM Elements
 const loginForm = document.getElementById("loginForm");
@@ -175,6 +175,11 @@ async function initProfileView(user) {
         if (!provider) throw new Error("Provider not found");
 
         renderProfileData(provider);
+
+        // Fetch and render reviews
+        const reviews = await getProviderReviews(providerId);
+        renderReviews(reviews);
+
         setupProfileActions(providerId);
     } catch (error) {
         console.error(error);
@@ -249,6 +254,43 @@ function renderDocuments(docs) {
             </div>
         `;
     }).join('');
+}
+
+function renderReviews(reviews) {
+    const container = document.getElementById("review-container");
+    if (!container) return;
+
+    if (!reviews || reviews.length === 0) {
+        container.innerHTML = '<p style="color: var(--text-muted);">No reviews yet.</p>';
+        return;
+    }
+
+    container.innerHTML = reviews.map(review => {
+        const rating = review.rating || 0;
+        const stars = Array(5).fill(0).map((_, i) =>
+            `<i data-lucide="star" style="width: 14px; height: 14px; ${i < rating ? 'fill: #f59e0b; color: #f59e0b;' : 'color: #cbd5e1;'}"></i>`
+        ).join('');
+
+        const date = formatDate(review.createdAt);
+        const userName = review.userName || "Anonymous User";
+        const comment = review.comment || review.text || "No comment provided.";
+
+        return `
+            <div style="border-bottom: 1px solid var(--border-color); padding: 1rem 0;">
+                <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 0.5rem;">
+                    <div style="display: flex; align-items: center; gap: 0.5rem;">
+                        <div style="font-weight: 600; font-size: 0.875rem;">${userName}</div>
+                        <div style="display: flex; gap: 2px;">${stars}</div>
+                    </div>
+                    <div style="font-size: 0.75rem; color: var(--text-muted);">${date}</div>
+                </div>
+                <p style="font-size: 0.875rem; color: var(--text-main); line-height: 1.4;">${comment}</p>
+            </div>
+        `;
+    }).join('');
+
+    // re-init icons for the new review stars
+    if (window.lucide) window.lucide.createIcons();
 }
 
 function setupProfileActions(providerId) {
