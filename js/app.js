@@ -341,26 +341,47 @@ function setupProfileActions(providerId) {
         }
     });
 
-    rejectBtn?.addEventListener("click", async () => {
-        if (rejectionNote.style.display === "none") {
-            rejectionNote.style.display = "block";
-            rejectionNote.focus();
-            rejectBtn.textContent = "Confirm Rejection";
-            return;
-        }
+    // --- Rejection Modal Logic ---
+    const rejectionModal = document.getElementById('rejectionModal');
+    const modalNote = document.getElementById('modalRejectionNote');
+    const confirmRejectionBtn = document.getElementById('confirmRejectionBtn');
+    const cancelRejection = document.getElementById('cancelRejection');
+    const closeRejection = document.getElementById('closeRejection');
 
-        const note = rejectionNote.value.trim();
+    rejectBtn?.addEventListener("click", () => {
+        if (rejectionModal) rejectionModal.style.display = 'flex';
+        if (modalNote) modalNote.value = '';
+        if (window.lucide) window.lucide.createIcons();
+    });
+
+    const closeModal = () => {
+        if (rejectionModal) rejectionModal.style.display = 'none';
+    };
+
+    [cancelRejection, closeRejection].forEach(btn => {
+        btn?.addEventListener('click', closeModal);
+    });
+
+    confirmRejectionBtn?.addEventListener('click', async () => {
+        const note = modalNote?.value.trim();
         if (!note) {
             alert("Please provide a reason for rejection.");
             return;
         }
 
-        if (confirm("Reject this provider?")) {
+        confirmRejectionBtn.disabled = true;
+        confirmRejectionBtn.textContent = 'Processing...';
+
+        try {
             await handleStatusUpdate(providerId, {
                 status: "rejected",
                 verified: false,
                 rejectionReason: note
             });
+            closeModal();
+        } catch (error) {
+            confirmRejectionBtn.disabled = false;
+            confirmRejectionBtn.textContent = 'Reject Provider';
         }
     });
 

@@ -320,8 +320,6 @@
                     <section class="info-section">
                         <h2 class="section-title" style="font-size: 1rem;"><i data-lucide="shield-check"></i>
                             Verification</h2>
-                        <textarea id="rejectionNote" class="rejection-note"
-                            placeholder="Reason for rejection..."></textarea>
 
                         <button class="btn-primary btn-action" id="approveProviderBtn"
                             style="background-color: var(--status-active);">
@@ -335,6 +333,30 @@
                 </aside>
             </div>
         </main>
+    </div>
+
+    <!-- Rejection Modal -->
+    <div id="rejectionModal" class="zoom-modal" style="display: none; align-items: center; justify-content: center;">
+        <div class="card-table" style="width: 100%; max-width: 500px; padding: 2rem; position: relative;">
+            <button class="close-zoom" id="closeRejection"
+                style="top: 1rem; right: 1rem; color: var(--text-muted);">&times;</button>
+            <h2 style="margin-bottom: 1rem; font-size: 1.25rem; display: flex; align-items: center; gap: 0.5rem;">
+                <i data-lucide="alert-circle" style="color: var(--status-rejected);"></i> Confirm Rejection
+            </h2>
+            <p style="color: var(--text-muted); font-size: 0.875rem; margin-bottom: 1.5rem;">
+                Please provide a clear reason for rejecting this provider. This information will be logged for
+                administrative review.
+            </p>
+            <textarea id="modalRejectionNote" class="form-input" style="min-height: 120px; margin-bottom: 1.5rem;"
+                placeholder="e.g. Incomplete vehicle documentation, invalid PrDP..."></textarea>
+            <div style="display: flex; gap: 1rem; justify-content: flex-end;">
+                <button class="btn-primary" id="cancelRejection"
+                    style="background: #e2e8f0; color: var(--text-main); width: auto; padding: 0.75rem 1.5rem;">Cancel</button>
+                <button class="btn-primary" id="confirmRejectionBtn"
+                    style="background: var(--status-rejected); width: auto; padding: 0.75rem 1.5rem;">Reject
+                    Provider</button>
+            </div>
+        </div>
     </div>
 
     <!-- Zoom Modal -->
