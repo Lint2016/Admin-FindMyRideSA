@@ -154,4 +154,33 @@ export async function getProviderReviews(providerId) {
         return [];
     }
 }
+/**
+ * Confirms a monthly subscription payment and updates the period dates
+ */
+export async function confirmSubscriptionPayment(id) {
+    try {
+        const docRef = doc(db, "providers", id);
+        const now = new Date();
 
+        // Calculate subscription dates
+        const startDate = new Date(now);
+        const endDate = new Date(now);
+        endDate.setMonth(endDate.getMonth() + 1);
+
+        const graceDate = new Date(endDate);
+        graceDate.setDate(graceDate.getDate() + 5);
+
+        await updateDoc(docRef, {
+            subscriptionStartDate: startDate.toISOString(),
+            subscriptionEndDate: endDate.toISOString(),
+            gracePeriodEndDate: graceDate.toISOString(),
+            lastPaymentDate: now.toISOString(),
+            billingCycle: "monthly",
+            updatedAt: now.toISOString(),
+            lastProcessedBy: "admin"
+        });
+    } catch (error) {
+        console.error("Error confirming subscription payment:", error);
+        throw error;
+    }
+}

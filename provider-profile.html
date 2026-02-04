@@ -208,7 +208,8 @@
                             Back to Dashboard</a>
                     </div>
                     <h1 class="page-title" id="provider-name">Loading...</h1>
-                    <div id="status-badge-container" style="margin-top: 0.5rem;"></div>
+                    <div id="status-badge-container"
+                        style="margin-top: 0.5rem; display: flex; gap: 0.5rem; align-items: center;"></div>
                 </div>
             </header>
 
@@ -270,13 +271,48 @@
                 <aside class="action-sidebar">
                     <!-- Payment Status -->
                     <section class="info-section">
-                        <h2 class="section-title" style="font-size: 1rem;"><i data-lucide="credit-card"></i> Payment
+                        <h2 class="section-title" style="font-size: 1rem;"><i data-lucide="credit-card"></i>
+                            Registration Payment
                         </h2>
                         <div id="payment-status-info" style="margin-bottom: 1.5rem;">
                             <span class="badge badge-pending">Pending Registration Fee</span>
                         </div>
                         <button class="btn-primary btn-action" id="confirmPaymentBtn">
-                            <i data-lucide="check-circle"></i> Confirm Payment
+                            <i data-lucide="check-circle"></i> Confirm Registration
+                        </button>
+                    </section>
+
+                    <!-- Monthly Subscription Section -->
+                    <section class="info-section" id="subscription-section">
+                        <h2 class="section-title" style="font-size: 1rem;"><i data-lucide="calendar"></i> Monthly
+                            Subscription</h2>
+
+                        <div style="margin-bottom: 1rem;">
+                            <div
+                                style="display: flex; justify-content: space-between; font-size: 0.75rem; margin-bottom: 0.5rem;">
+                                <span style="font-weight: 600; color: var(--text-muted);">Status:</span>
+                                <span id="val-sub-status">-</span>
+                            </div>
+                            <div
+                                style="display: flex; justify-content: space-between; font-size: 0.75rem; margin-bottom: 0.25rem;">
+                                <span style="color: var(--text-muted);">Start:</span>
+                                <span id="val-sub-start">-</span>
+                            </div>
+                            <div
+                                style="display: flex; justify-content: space-between; font-size: 0.75rem; margin-bottom: 0.25rem;">
+                                <span style="color: var(--text-muted);">Renewal:</span>
+                                <span id="val-sub-end">-</span>
+                            </div>
+                            <div
+                                style="display: flex; justify-content: space-between; font-size: 0.75rem; margin-bottom: 0.25rem;">
+                                <span style="color: var(--text-muted);">Last Paid:</span>
+                                <span id="val-sub-last">-</span>
+                            </div>
+                        </div>
+
+                        <button class="btn-primary btn-action" id="confirmSubscriptionBtn"
+                            style="background-color: var(--accent); display: none;">
+                            <i data-lucide="refresh-cw"></i> Confirm Subscription Payment
                         </button>
                     </section>
 

@@ -1,6 +1,6 @@
 // Main Application Controller
 import { login, logout, initAuthGuard } from "./auth.js";
-import { getDashboardMetrics, getRecentProviders, getProviderById, updateProviderStatus, getProviderReviews } from "./firestore.js";
+import { getDashboardMetrics, getRecentProviders, getProviderById, updateProviderStatus, getProviderReviews, confirmSubscriptionPayment } from "./firestore.js";
 
 // DOM Elements
 const loginForm = document.getElementById("loginForm");
@@ -80,7 +80,9 @@ function setupDashboardFilters() {
         { id: 'filter-dashboard', status: null, title: 'Overview', tableTitle: 'Recent Provider Registrations', isPayments: false },
         { id: 'filter-pending', status: 'pending', title: 'Pending Providers', tableTitle: 'Providers Awaiting Approval', isPayments: false },
         { id: 'filter-active', status: 'active', title: 'Active Providers', tableTitle: 'Live Service Providers', isPayments: false },
-        { id: 'filter-payments', status: null, title: 'Payments', tableTitle: 'Financial Overview', isPayments: true }
+        { id: 'filter-payments', status: null, title: 'Payments', tableTitle: 'Financial Overview', isPayments: true },
+        { id: 'filter-pay-reg', status: 'reg', title: 'Registration Payments', tableTitle: 'Provider Registration Fees', isPayments: true },
+        { id: 'filter-pay-sub', status: 'sub', title: 'Subscription Payments', tableTitle: 'Monthly Subscription Renewals', isPayments: true }
     ];
 
     filters.forEach(filter => {
@@ -90,8 +92,13 @@ function setupDashboardFilters() {
                 e.preventDefault();
 
                 // Update UI State
-                document.querySelectorAll('.nav-link').forEach(link => link.classList.remove('active'));
+                document.querySelectorAll('.nav-link, .nav-sub-link').forEach(link => link.classList.remove('active'));
                 btn.classList.add('active');
+
+                // If it's a sub-link, also activate the parent
+                if (btn.classList.contains('nav-sub-link')) {
+                    document.getElementById('filter-payments')?.classList.add('active');
+                }
 
                 // Update View State
                 isPaymentView = filter.isPayments;
@@ -105,7 +112,7 @@ function setupDashboardFilters() {
                 if (tableTitle) tableTitle.textContent = filter.tableTitle;
 
                 // Update Table Header
-                updateTableHeader(isPaymentView);
+                updateTableHeader(isPaymentView, currentFilter);
 
                 // Show loading state in table
                 if (providerTableBody) {
@@ -113,10 +120,12 @@ function setupDashboardFilters() {
                 }
 
                 // Fetch and render
-                allProviders = await getRecentProviders(filter.isPayments ? 100 : 20, filter.status);
+                // For pay-reg and pay-sub, we still fetch recent providers but filter logic in render
+                const fetchStatus = (filter.status === 'reg' || filter.status === 'sub') ? null : filter.status;
+                allProviders = await getRecentProviders(filter.isPayments ? 100 : 20, fetchStatus);
 
                 if (isPaymentView) {
-                    renderPaymentTable(allProviders);
+                    renderPaymentTable(allProviders, filter.status);
                 } else {
                     const emptyMsg = filter.status
                         ? `No providers found with status: ${filter.status.toUpperCase()}`
@@ -131,21 +140,34 @@ function setupDashboardFilters() {
     });
 }
 
-function updateTableHeader(isPayments) {
+function updateTableHeader(isPayments, paymentType = null) {
     const tableHead = document.getElementById('tableHead');
     if (!tableHead) return;
 
     if (isPayments) {
-        tableHead.innerHTML = `
-            <tr>
-                <th>Provider Name</th>
-                <th>Phone Number</th>
-                <th>Payment Type</th>
-                <th>Amount</th>
-                <th>Status</th>
-                <th>Action</th>
-            </tr>
-        `;
+        if (paymentType === 'sub') {
+            tableHead.innerHTML = `
+                <tr>
+                    <th>Provider Name</th>
+                    <th>Subscription End</th>
+                    <th>Status</th>
+                    <th>Last Payment</th>
+                    <th>Billing</th>
+                    <th>Action</th>
+                </tr>
+            `;
+        } else {
+            tableHead.innerHTML = `
+                <tr>
+                    <th>Provider Name</th>
+                    <th>Phone Number</th>
+                    <th>Payment Type</th>
+                    <th>Amount</th>
+                    <th>Status</th>
+                    <th>Action</th>
+                </tr>
+            `;
+        }
     } else {
         tableHead.innerHTML = `
             <tr>
@@ -196,7 +218,10 @@ function renderProfileData(provider) {
 
     // Status Badge
     if (statusBadgeContainer) {
-        statusBadgeContainer.innerHTML = renderStatusBadge(provider.status);
+        statusBadgeContainer.innerHTML = `
+            ${renderStatusBadge(provider.status)}
+            ${renderAvailabilityBadge(provider.availabilityStatus)}
+        `;
     }
 
     // Personal Info
@@ -221,6 +246,9 @@ function renderProfileData(provider) {
 
     // Documents
     renderDocuments(provider.documents);
+
+    // Monthly Subscription
+    renderSubscriptionData(provider);
 }
 
 function setVal(id, val) {
@@ -236,11 +264,16 @@ function renderDocuments(docs) {
     }
 
     docGrid.innerHTML = Object.entries(docs).map(([key, url]) => {
-        const isPdf = typeof url === 'string' && (url.toLowerCase().split('?')[0].endsWith('.pdf') || url.includes('format=pdf') || url.includes('/pdf'));
+        const isPdf = typeof url === 'string' && (
+            url.toLowerCase().split('?')[0].endsWith('.pdf') ||
+            url.includes('format=pdf') ||
+            url.includes('/pdf') ||
+            url.includes('google-apps.pdf')
+        );
 
         return `
             <div class="doc-card">
-                <div class="doc-preview ${isPdf ? 'pdf-preview' : ''}" onclick="openZoom('${url}')">
+                <div class="doc-preview ${isPdf ? 'pdf-preview' : ''}" onclick="openZoom('${url}', '${key}')">
                     ${isPdf ? `
                         <div class="pdf-icon">PDF</div>
                         <span style="font-size: 0.7rem; font-weight: 600;">Click to View</span>
@@ -272,8 +305,8 @@ function renderReviews(reviews) {
         ).join('');
 
         const date = formatDate(review.createdAt);
-        const userName = review.userName || "Anonymous User";
-        const comment = review.comment || review.text || "No comment provided.";
+        const userName = getReviewerName(review);
+        const comment = review.comment || review.text || review.message || "No comment provided.";
 
         return `
             <div style="border-bottom: 1px solid var(--border-color); padding: 1rem 0;">
@@ -297,10 +330,14 @@ function setupProfileActions(providerId) {
     const approveBtn = document.getElementById("approveProviderBtn");
     const rejectBtn = document.getElementById("rejectProviderBtn");
     const confirmPaymentBtn = document.getElementById("confirmPaymentBtn");
+    const confirmSubscriptionBtn = document.getElementById("confirmSubscriptionBtn");
 
     approveBtn?.addEventListener("click", async () => {
         if (confirm("Are you sure you want to ACTIVATE this provider? They will go live on the public site.")) {
-            await handleStatusUpdate(providerId, { status: "active" });
+            await handleStatusUpdate(providerId, {
+                status: "active",
+                verified: true
+            });
         }
     });
 
@@ -321,6 +358,7 @@ function setupProfileActions(providerId) {
         if (confirm("Reject this provider?")) {
             await handleStatusUpdate(providerId, {
                 status: "rejected",
+                verified: false,
                 rejectionReason: note
             });
         }
@@ -329,6 +367,19 @@ function setupProfileActions(providerId) {
     confirmPaymentBtn?.addEventListener("click", async () => {
         if (confirm("Confirm discovery fee payment for this provider?")) {
             await handleStatusUpdate(providerId, { paymentStatus: "paid" });
+        }
+    });
+
+    confirmSubscriptionBtn?.addEventListener("click", async () => {
+        const providerName = profileName?.textContent || "this provider";
+        if (confirm(`Confirm monthly subscription payment for ${providerName}?`)) {
+            try {
+                await confirmSubscriptionPayment(providerId);
+                alert("Subscription payment confirmed successfully!");
+                location.reload();
+            } catch (error) {
+                alert("Error confirmation subscription: " + error.message);
+            }
         }
     });
 }
@@ -344,22 +395,42 @@ async function handleStatusUpdate(id, updates) {
 }
 
 // --- Zoom Logic ---
-window.openZoom = (url) => {
+window.openZoom = (url, label = 'Document') => {
     const modal = document.getElementById("zoomModal");
     const img = document.getElementById("zoomedImg");
     const pdf = document.getElementById("zoomedPdf");
 
     if (modal && img && pdf) {
-        const isPdf = typeof url === 'string' && (url.toLowerCase().split('?')[0].endsWith('.pdf') || url.includes('format=pdf') || url.includes('/pdf'));
+        const isPdf = typeof url === 'string' && (
+            url.toLowerCase().split('?')[0].endsWith('.pdf') ||
+            url.includes('format=pdf') ||
+            url.includes('/pdf') ||
+            url.includes('google-apps.pdf')
+        );
 
         if (isPdf) {
             pdf.src = url;
             pdf.style.display = "block";
             img.style.display = "none";
+
+            // Add a temporary helper link if not already present
+            let downloadLink = document.getElementById('zoom-download-link');
+            if (!downloadLink) {
+                downloadLink = document.createElement('a');
+                downloadLink.id = 'zoom-download-link';
+                downloadLink.style.cssText = "position: absolute; bottom: -30px; left: 50%; transform: translateX(-50%); color: white; text-decoration: underline; font-size: 0.875rem;";
+                document.querySelector('.zoom-content').appendChild(downloadLink);
+            }
+            downloadLink.href = url;
+            downloadLink.target = "_blank";
+            downloadLink.textContent = `Open Full ${label} in New Tab`;
+            downloadLink.style.display = "block";
         } else {
             img.src = url;
             img.style.display = "block";
             pdf.style.display = "none";
+            const downloadLink = document.getElementById('zoom-download-link');
+            if (downloadLink) downloadLink.style.display = "none";
         }
 
         modal.style.display = "flex";
@@ -371,28 +442,25 @@ document.getElementById("closeZoom")?.addEventListener("click", () => {
 });
 
 // --- Helper Functions ---
+/**
+ * Safely converts any timestamp (Firestore, object, string, or Date) to a JS Date object
+ */
+function ensureDate(timestamp) {
+    if (!timestamp) return null;
+    if (timestamp instanceof Date) return timestamp;
+    if (typeof timestamp.toDate === 'function') return timestamp.toDate();
+    if (timestamp.seconds) return new Date(timestamp.seconds * 1000);
+    const d = new Date(timestamp);
+    return d.toString() !== 'Invalid Date' ? d : null;
+}
+
 function formatDate(timestamp) {
-    if (!timestamp) return 'N/A';
+    const date = ensureDate(timestamp);
+    if (!date) return 'N/A';
 
-    // Handle Firebase Timestamp
-    if (typeof timestamp.toDate === 'function') {
-        return timestamp.toDate().toLocaleDateString('en-ZA', {
-            day: 'numeric', month: 'long', year: 'numeric'
-        });
-    }
-
-    // Handle plain object with seconds (Firebase internal structure)
-    if (timestamp.seconds) {
-        return new Date(timestamp.seconds * 1000).toLocaleDateString('en-ZA', {
-            day: 'numeric', month: 'long', year: 'numeric'
-        });
-    }
-
-    // Handle string or Date object
-    const date = new Date(timestamp);
-    return date.toString() !== 'Invalid Date' ? date.toLocaleDateString('en-ZA', {
+    return date.toLocaleDateString('en-ZA', {
         day: 'numeric', month: 'long', year: 'numeric'
-    }) : 'Invalid Date';
+    });
 }
 
 function getArea(provider) {
@@ -408,6 +476,59 @@ function getSource(provider) {
         type: rawSource.type || rawSource.sourceType || provider.referralSource || provider.sourceType || provider.source || 'Other',
         referredName: rawSource.referredName || rawSource.referralName || provider.referrerName || provider.referralName || provider.referral || 'Unknown'
     };
+}
+
+function getReviewerName(review) {
+    return review.user ||
+        review.userName ||
+        review.displayName ||
+        review.fullName ||
+        review.name ||
+        review.user_name ||
+        "Anonymous User";
+}
+
+function getSubscriptionStatus(provider) {
+    const endDate = ensureDate(provider.subscriptionEndDate);
+    if (!endDate) return 'Expired'; // No date means expired or not yet active
+
+    const now = new Date();
+    const graceDate = ensureDate(provider.gracePeriodEndDate);
+
+    if (now < endDate) return 'Active';
+    if (graceDate && now <= graceDate) return 'Grace';
+    return 'Expired';
+}
+
+function renderSubscriptionData(provider) {
+    const section = document.getElementById("subscription-section");
+    const statusVal = document.getElementById("val-sub-status");
+    const startVal = document.getElementById("val-sub-start");
+    const endVal = document.getElementById("val-sub-end");
+    const lastVal = document.getElementById("val-sub-last");
+    const btn = document.getElementById("confirmSubscriptionBtn");
+
+    if (!section) return;
+
+    const status = getSubscriptionStatus(provider);
+
+    // Status Badge Color
+    let statusClass = 'badge-pending'; // Default for Expired/N/A
+    if (status === 'Active') statusClass = 'badge-active';
+    if (status === 'Grace') statusClass = 'badge-warning';
+
+    if (statusVal) {
+        statusVal.innerHTML = `<span class="badge ${statusClass}">${status.toUpperCase()}</span>`;
+    }
+
+    if (startVal) startVal.textContent = formatDate(provider.subscriptionStartDate);
+    if (endVal) endVal.textContent = formatDate(provider.subscriptionEndDate);
+    if (lastVal) lastVal.textContent = formatDate(provider.lastPaymentDate);
+
+    // Button Visibility: Only show if Expired, Grace, or No subscription exists
+    if (btn) {
+        btn.style.display = (status === 'Expired' || status === 'Grace') ? 'flex' : 'none';
+    }
 }
 
 function updateStat(id, value) {
@@ -457,10 +578,19 @@ function renderProviderTable(providers, emptyMessage = "No providers found.") {
     }).join('');
 }
 
-function renderPaymentTable(providers, emptyMessage = "No payment records found.") {
+function renderPaymentTable(providers, paymentType = 'reg', emptyMessage = "No payment records found.") {
     if (!providerTableBody) return;
 
-    if (providers.length === 0) {
+    // Filter providers based on payment type
+    let filtered = providers;
+    if (paymentType === 'reg') {
+        // Show all but prioritize those needing registration approval
+    } else if (paymentType === 'sub') {
+        // Only show those with an existing subscription record or active account
+        filtered = providers.filter(p => p.status === 'active' || p.subscriptionEndDate);
+    }
+
+    if (filtered.length === 0) {
         providerTableBody.innerHTML = `
             <tr>
                 <td colspan="6" style="text-align: center; padding: 3rem; color: var(--text-muted);">
@@ -475,29 +605,49 @@ function renderPaymentTable(providers, emptyMessage = "No payment records found.
         return;
     }
 
-    providerTableBody.innerHTML = providers.map(p => {
+    providerTableBody.innerHTML = filtered.map(p => {
         const name = p.fullName || p.name || p.businessName || 'N/A';
-        const phone = p.phoneNumber || p.phone || 'N/A';
 
-        // Logical derivation for demo/first-phase
-        const isSubscription = p.status === 'active' && p.paymentStatus === 'paid';
-        const type = isSubscription ? "Subscription" : "Registration";
-        const amount = isSubscription ? "R49" : "R99";
+        if (paymentType === 'sub') {
+            const subStatus = getSubscriptionStatus(p);
+            let statusClass = 'badge-pending';
+            if (subStatus === 'Active') statusClass = 'badge-active';
+            if (subStatus === 'Grace') statusClass = 'badge-warning';
 
-        return `
-            <tr style="cursor: pointer;" onclick="viewProfile('${p.id}')">
-                <td style="font-weight: 500;">${name}</td>
-                <td style="color: var(--text-muted);">${phone}</td>
-                <td><span class="badge badge-info" style="font-size: 0.7rem; font-weight: 600;">${type}</span></td>
-                <td style="font-weight: 700;">${p.amountPaid || amount}</td>
-                <td>${renderPaymentBadge(p.paymentStatus)}</td>
-                <td>
-                    <button class="btn-primary" style="padding: 0.4rem 0.8rem; font-size: 0.75rem; width: auto;">
-                        Review
-                    </button>
-                </td>
-            </tr>
-        `;
+            return `
+                <tr style="cursor: pointer;" onclick="viewProfile('${p.id}')">
+                    <td style="font-weight: 500;">${name}</td>
+                    <td>${formatDate(p.subscriptionEndDate)}</td>
+                    <td><span class="badge ${statusClass}">${subStatus.toUpperCase()}</span></td>
+                    <td>${formatDate(p.lastPaymentDate)}</td>
+                    <td><span class="badge badge-info" style="font-size: 0.7rem;">MONTHLY</span></td>
+                    <td>
+                        <button class="btn-primary" style="padding: 0.4rem 0.8rem; font-size: 0.75rem; width: auto;">
+                            Review
+                        </button>
+                    </td>
+                </tr>
+            `;
+        } else {
+            const phone = p.phoneNumber || p.phone || 'N/A';
+            const type = "Registration";
+            const amount = "R99";
+
+            return `
+                <tr style="cursor: pointer;" onclick="viewProfile('${p.id}')">
+                    <td style="font-weight: 500;">${name}</td>
+                    <td style="color: var(--text-muted);">${phone}</td>
+                    <td><span class="badge badge-info" style="font-size: 0.7rem; font-weight: 600;">${type}</span></td>
+                    <td style="font-weight: 700;">${p.amountPaid || amount}</td>
+                    <td>${renderPaymentBadge(p.paymentStatus)}</td>
+                    <td>
+                        <button class="btn-primary" style="padding: 0.4rem 0.8rem; font-size: 0.75rem; width: auto;">
+                            Review
+                        </button>
+                    </td>
+                </tr>
+            `;
+        }
     }).join('');
 }
 
@@ -521,6 +671,17 @@ function renderStatusBadge(status) {
 function renderPaymentBadge(status) {
     const isPaid = status === 'paid';
     return `<span class="badge ${isPaid ? 'badge-active' : 'badge-pending'}">${isPaid ? 'PAID' : 'UNPAID'}</span>`;
+}
+
+function renderAvailabilityBadge(status) {
+    const s = (status || 'available').toLowerCase();
+    const label = s === 'full' || s === 'fully booked' ? 'FULLY BOOKED' : 'AVAILABLE';
+    const statusClass = s === 'full' || s === 'fully booked' ? 'badge-rejected' : 'badge-active';
+
+    return `<span class="badge ${statusClass}">
+        <i data-lucide="${s === 'full' || s === 'fully booked' ? 'users' : 'check'}" style="width: 12px; height: 12px; margin-right: 4px;"></i>
+        ${label}
+    </span>`;
 }
 
 // --- Auth Handlers ---

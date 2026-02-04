@@ -10,13 +10,13 @@
     --sidebar-bg: #1e293b;
     --sidebar-text: #94a3b8;
     --sidebar-active: #ffffff;
-    
+
     --text-main: #1e293b;
     --text-muted: #64748b;
-    
+
     --accent: #2563eb;
     --accent-hover: #1d4ed8;
-    
+
     --status-pending: #f59e0b;
     --status-active: #10b981;
     --status-rejected: #ef4444;
@@ -25,7 +25,7 @@
     --border-color: #e2e8f0;
     --shadow-sm: 0 1px 2px 0 rgb(0 0 0 / 0.05);
     --shadow-md: 0 4px 6px -1px rgb(0 0 0 / 0.1);
-    
+
     --radius-sm: 4px;
     --radius-md: 8px;
     --radius-lg: 12px;
@@ -180,7 +180,8 @@ body {
     transition: all 0.2s;
 }
 
-.nav-link:hover, .nav-link.active {
+.nav-link:hover,
+.nav-link.active {
     background-color: rgba(255, 255, 255, 0.1);
     color: var(--sidebar-active);
 }
@@ -290,10 +291,62 @@ tr:last-child td {
     font-weight: 600;
 }
 
-.badge-pending { background-color: #fef3c7; color: #92400e; }
-.badge-active { background-color: #dcfce7; color: #166534; }
-.badge-rejected { background-color: #fee2e2; color: #991b1b; }
-.badge-info { background-color: #e0f2fe; color: #075985; }
+.badge-pending {
+    background-color: #fef3c7;
+    color: #92400e;
+}
+
+.badge-active {
+    background-color: #dcfce7;
+    color: #166534;
+}
+
+.badge-rejected {
+    background-color: #fee2e2;
+    color: #991b1b;
+}
+
+.badge-warning {
+    background-color: #ffedd5;
+    color: #9a3412;
+}
+
+.badge-info {
+    background-color: #e0f2fe;
+    color: #075985;
+}
+
+/* Sub-navigation */
+.nav-sub-list {
+    margin-left: 2.75rem;
+    margin-top: 0.25rem;
+    display: none;
+    /* Hidden by default, shown when parent is active or hovered */
+}
+
+.nav-group:hover .nav-sub-list,
+.nav-link.active+.nav-sub-list {
+    display: block;
+}
+
+.nav-sub-link {
+    display: block;
+    padding: 0.5rem 0.75rem;
+    color: var(--sidebar-text);
+    text-decoration: none;
+    font-size: 0.75rem;
+    font-weight: 500;
+    border-radius: var(--radius-sm);
+    transition: all 0.2s;
+}
+
+.nav-sub-link:hover,
+.nav-sub-link.active {
+    background-color: rgba(255, 255, 255, 0.05);
+    color: var(--sidebar-active);
+}
 
 /* Utilities */
-.hidden { display: none !important; }
+.hidden {
+    display: none !important;
+}
