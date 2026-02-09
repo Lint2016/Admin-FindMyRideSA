@@ -230,7 +230,21 @@ function renderProfileData(provider) {
 
     // Personal Info
     setVal("val-email", provider.email);
-    setVal("val-phone", provider.phoneNumber || provider.phone);
+
+    const phone = provider.phoneNumber || provider.phone;
+    const phoneEl = document.getElementById("val-phone");
+    if (phoneEl && phone) {
+        const waLink = formatWhatsAppLink(phone);
+        phoneEl.innerHTML = `
+            <a href="${waLink}" target="_blank" title="Chat on WhatsApp" style="text-decoration: none; color: #128C7E; font-weight: 600; display: inline-flex; align-items: center; gap: 0.25rem;">
+                <i data-lucide="message-square" style="width: 14px; height: 14px;"></i>
+                ${phone}
+            </a>
+        `;
+    } else {
+        setVal("val-phone", phone || "-");
+    }
+
     setVal("val-area", area);
     setVal("val-joined", formatDate(provider.createdAt || provider.timestamp));
 
@@ -256,6 +270,9 @@ function renderProfileData(provider) {
 
     // Monthly Subscription
     renderSubscriptionData(provider);
+
+    // Re-init icons for the phone link
+    if (window.lucide) window.lucide.createIcons();
 }
 
 function setVal(id, val) {
@@ -379,13 +396,10 @@ function setupProfileActions(providerId) {
     const confirmPaymentBtn = document.getElementById("confirmPaymentBtn");
     const confirmSubscriptionBtn = document.getElementById("confirmSubscriptionBtn");
 
-    approveBtn?.addEventListener("click", async () => {
-        if (confirm("Are you sure you want to ACTIVATE this provider? They will go live on the public site.")) {
-            await handleStatusUpdate(providerId, {
-                status: "active",
-                verified: true
-            });
-        }
+    approveBtn?.addEventListener("click", () => {
+        const modal = document.getElementById('activationModal');
+        if (modal) modal.style.display = 'flex';
+        if (window.lucide) window.lucide.createIcons();
     });
 
     // --- Rejection Modal Logic ---
@@ -424,7 +438,7 @@ function setupProfileActions(providerId) {
                 status: "rejected",
                 verified: false,
                 rejectionReason: note
-            });
+            }, "Provider Rejected", "The provider has been notified and delisted from search.");
             closeModal();
         } catch (error) {
             confirmRejectionBtn.disabled = false;
@@ -465,15 +479,67 @@ function setupProfileActions(providerId) {
         `;
         if (window.lucide) window.lucide.createIcons();
     });
+
+    // --- Activation Modal Logic ---
+    const activationModal = document.getElementById('activationModal');
+    const confirmActivationBtn = document.getElementById('confirmActivationBtn');
+    const cancelActivation = document.getElementById('cancelActivation');
+    const closeActivation = document.getElementById('closeActivation');
+
+    const closeActivationModal = () => {
+        if (activationModal) activationModal.style.display = 'none';
+    };
+
+    [cancelActivation, closeActivation].forEach(btn => {
+        btn?.addEventListener('click', closeActivationModal);
+    });
+
+    confirmActivationBtn?.addEventListener('click', async () => {
+        confirmActivationBtn.disabled = true;
+        confirmActivationBtn.innerHTML = '<i class="spinner" style="width: 14px; height: 14px; border: 2px solid #fff; border-top-color: transparent; border-radius: 50%; display: inline-block; animation: spin 1s linear infinite; vertical-align: middle; margin-right: 4px;"></i> Activating...';
+
+        try {
+            await handleStatusUpdate(providerId, {
+                status: "active",
+                verified: true
+            }, "Provider Activated Successfully", "This provider is now live on the public platform.");
+            closeActivationModal();
+        } catch (error) {
+            confirmActivationBtn.disabled = false;
+            confirmActivationBtn.textContent = 'Activate Provider';
+        }
+    });
+
+    // --- Success Modal Logic ---
+    document.getElementById("dismissSuccess")?.addEventListener("click", () => {
+        document.getElementById("successModal").style.display = "none";
+        location.reload();
+    });
 }
 
-async function handleStatusUpdate(id, updates) {
+async function handleStatusUpdate(id, updates, title = "Update Success", message = "Provider information has been updated.") {
     try {
         await updateProviderStatus(id, updates);
-        alert("Provider updated successfully!");
-        location.reload();
+        showSuccessModal(title, message);
     } catch (error) {
         alert("Error updating provider: " + error.message);
+    }
+}
+
+function showSuccessModal(title, message) {
+    const modal = document.getElementById("successModal");
+    const titleEl = document.getElementById("successTitle");
+    const msgEl = document.getElementById("successMessage");
+
+    if (modal && titleEl && msgEl) {
+        titleEl.textContent = title;
+        msgEl.textContent = message;
+        modal.style.display = "flex";
+        if (window.lucide) window.lucide.createIcons();
+    } else {
+        // Fallback if modal is missing (e.g. other pages)
+        alert(message);
+        location.reload();
     }
 }
 
@@ -532,9 +598,30 @@ function ensureDate(timestamp) {
     if (!timestamp) return null;
     if (timestamp instanceof Date) return timestamp;
     if (typeof timestamp.toDate === 'function') return timestamp.toDate();
-    if (timestamp.seconds) return new Date(timestamp.seconds * 1000);
+    if (timestamp.seconds !== undefined) return new Date(timestamp.seconds * 1000);
     const d = new Date(timestamp);
-    return d.toString() !== 'Invalid Date' ? d : null;
+    return isNaN(d.getTime()) ? null : d;
+}
+
+/**
+ * Formats a phone number for WhatsApp wa.me links
+ */
+function formatWhatsAppLink(phone) {
+    if (!phone) return "#";
+    // Strip everything except digits
+    let cleaned = phone.toString().replace(/\D/g, '');
+
+    // South Africa specific handling: replace leading 0 with 27
+    if (cleaned.startsWith('0') && cleaned.length === 10) {
+        cleaned = '27' + cleaned.substring(1);
+    }
+
+    // If it's a 9 digit number, assume it's missing the leading 0/27
+    if (cleaned.length === 9) {
+        cleaned = '27' + cleaned;
+    }
+
+    return `https://wa.me/${cleaned}`;
 }
 
 function formatDate(timestamp) {

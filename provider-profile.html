@@ -376,6 +376,48 @@
         </div>
     </div>
 
+    <!-- Activation Modal -->
+    <div id="activationModal" class="zoom-modal" style="display: none; align-items: center; justify-content: center;">
+        <div class="card-table" style="width: 100%; max-width: 500px; padding: 2rem; position: relative;">
+            <button class="close-zoom" id="closeActivation"
+                style="top: 1rem; right: 1rem; color: var(--text-muted);">&times;</button>
+            <h2 style="margin-bottom: 1rem; font-size: 1.25rem; display: flex; align-items: center; gap: 0.5rem;">
+                <i data-lucide="check-circle" style="color: var(--status-active);"></i> Confirm Activation
+            </h2>
+            <p style="color: var(--text-muted); font-size: 0.875rem; margin-bottom: 1.5rem;">
+                Are you sure you want to <strong>ACTIVATE</strong> this provider? They will be immediately visible on
+                the public platform and searchable by users.
+            </p>
+            <div style="display: flex; gap: 1rem; justify-content: flex-end;">
+                <button class="btn-primary" id="cancelActivation"
+                    style="background: #e2e8f0; color: var(--text-main); width: auto; padding: 0.75rem 1.5rem;">Cancel</button>
+                <button class="btn-primary" id="confirmActivationBtn"
+                    style="background: var(--status-active); width: auto; padding: 0.75rem 1.5rem;">Activate
+                    Provider</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Success Modal -->
+    <div id="successModal" class="zoom-modal"
+        style="display: none; align-items: center; justify-content: center; z-index: 2000;">
+        <div class="card-table"
+            style="width: 100%; max-width: 400px; padding: 2.5rem; position: relative; text-align: center;">
+            <div
+                style="width: 64px; height: 64px; background: var(--status-active); border-radius: 50%; display: flex; align-items: center; justify-content: center; margin: 0 auto 1.5rem; color: white;">
+                <i data-lucide="check" style="width: 32px; height: 32px; stroke-width: 3;"></i>
+            </div>
+            <h2 id="successTitle" style="margin-bottom: 0.75rem; font-size: 1.5rem; color: var(--text-main);">Success!
+            </h2>
+            <p id="successMessage"
+                style="color: var(--text-muted); font-size: 0.95rem; margin-bottom: 2rem; line-height: 1.5;">
+                Account status has been updated successfully.
+            </p>
+            <button class="btn-primary" id="dismissSuccess"
+                style="background: var(--primary-color); width: 100%; padding: 0.875rem;">Great, thanks!</button>
+        </div>
+    </div>
+
     <!-- Zoom Modal -->
     <div id="zoomModal" class="zoom-modal">
         <div class="zoom-content">
