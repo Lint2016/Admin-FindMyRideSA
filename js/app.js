@@ -1,6 +1,6 @@
 // Main Application Controller
 import { login, logout, initAuthGuard } from "./auth.js";
-import { getDashboardMetrics, getRecentProviders, getProviderById, updateProviderStatus, getProviderReviews, confirmSubscriptionPayment } from "./firestore.js";
+import { getDashboardMetrics, getRecentProviders, getProviderById, updateProviderStatus, getPaginatedReviews, confirmSubscriptionPayment } from "./firestore.js";
 
 // DOM Elements
 const loginForm = document.getElementById("loginForm");
@@ -20,6 +20,10 @@ const profileName = document.getElementById("provider-name");
 const statusBadgeContainer = document.getElementById("status-badge-container");
 const docGrid = document.getElementById("doc-grid");
 const rejectionNote = document.getElementById("rejectionNote");
+
+// Pagination State
+let lastReviewDoc = null;
+let currentProviderId = null;
 
 // --- Initialization ---
 document.addEventListener("DOMContentLoaded", () => {
@@ -198,9 +202,9 @@ async function initProfileView(user) {
 
         renderProfileData(provider);
 
-        // Fetch and render reviews
-        const reviews = await getProviderReviews(providerId);
-        renderReviews(reviews);
+        // Fetch and render initial reviews
+        currentProviderId = providerId;
+        await fetchAndRenderReviews(providerId, true);
 
         setupProfileActions(providerId);
     } catch (error) {
@@ -247,6 +251,9 @@ function renderProfileData(provider) {
     // Documents
     renderDocuments(provider.documents);
 
+    // Compliance Expiries (Roadworthy & PrDP)
+    renderComplianceExpiries(provider);
+
     // Monthly Subscription
     renderSubscriptionData(provider);
 }
@@ -263,15 +270,17 @@ function renderDocuments(docs) {
         return;
     }
 
-    docGrid.innerHTML = Object.entries(docs).map(([key, url]) => {
-        const isPdf = typeof url === 'string' && (
-            url.toLowerCase().split('?')[0].endsWith('.pdf') ||
-            url.includes('format=pdf') ||
-            url.includes('/pdf') ||
-            url.includes('google-apps.pdf')
-        );
+    docGrid.innerHTML = Object.entries(docs)
+        .filter(([key, url]) => typeof url === 'string' && url.startsWith('http'))
+        .map(([key, url]) => {
+            const isPdf = typeof url === 'string' && (
+                url.toLowerCase().split('?')[0].endsWith('.pdf') ||
+                url.includes('format=pdf') ||
+                url.includes('/pdf') ||
+                url.includes('google-apps.pdf')
+            );
 
-        return `
+            return `
             <div class="doc-card">
                 <div class="doc-preview ${isPdf ? 'pdf-preview' : ''}" onclick="openZoom('${url}', '${key}')">
                     ${isPdf ? `
@@ -286,19 +295,37 @@ function renderDocuments(docs) {
                 </div>
             </div>
         `;
-    }).join('');
+        }).join('');
 }
 
-function renderReviews(reviews) {
+async function fetchAndRenderReviews(providerId, reset = false) {
+    if (reset) {
+        lastReviewDoc = null;
+        const container = document.getElementById("review-container");
+        if (container) container.innerHTML = '<p style="color: var(--text-muted); font-style: italic;">Loading reviews...</p>';
+    }
+
+    const { reviews, lastDoc, hasMore } = await getPaginatedReviews(providerId, 4, lastReviewDoc);
+
+    lastReviewDoc = lastDoc;
+    renderReviews(reviews, reset);
+
+    const loadMoreBtn = document.getElementById("load-more-container");
+    if (loadMoreBtn) {
+        loadMoreBtn.style.display = hasMore ? 'flex' : 'none';
+    }
+}
+
+function renderReviews(reviews, clearContainer = false) {
     const container = document.getElementById("review-container");
     if (!container) return;
 
-    if (!reviews || reviews.length === 0) {
+    if (clearContainer && (!reviews || reviews.length === 0)) {
         container.innerHTML = '<p style="color: var(--text-muted);">No reviews yet.</p>';
         return;
     }
 
-    container.innerHTML = reviews.map(review => {
+    const reviewsHtml = reviews.map(review => {
         const rating = review.rating || 0;
         const stars = Array(5).fill(0).map((_, i) =>
             `<i data-lucide="star" style="width: 14px; height: 14px; ${i < rating ? 'fill: #f59e0b; color: #f59e0b;' : 'color: #cbd5e1;'}"></i>`
@@ -307,6 +334,19 @@ function renderReviews(reviews) {
         const date = formatDate(review.createdAt);
         const userName = getReviewerName(review);
         const comment = review.comment || review.text || review.message || "No comment provided.";
+
+        // Provider Response Logic
+        const response = review.providerResponse;
+        const responseHtml = response ? `
+            <div style="margin-top: 1rem; padding: 1rem; background: var(--bg-light); border-left: 3px solid var(--primary-color); border-radius: 4px; font-size: 0.825rem;">
+                <div style="display: flex; align-items: center; gap: 0.5rem; margin-bottom: 0.5rem;">
+                    <i data-lucide="message-square" style="width: 14px; height: 14px; color: var(--primary-color);"></i>
+                    <span style="font-weight: 700; color: var(--text-main);">Provider Response</span>
+                    <span style="font-size: 0.7rem; color: var(--text-muted); margin-left: auto;">${formatDate(response.timestamp || response.date)}</span>
+                </div>
+                <p style="color: var(--text-main); line-height: 1.5; font-style: italic;">"${response.text || response.message || response}"</p>
+            </div>
+        ` : '';
 
         return `
             <div style="border-bottom: 1px solid var(--border-color); padding: 1rem 0;">
@@ -318,9 +358,16 @@ function renderReviews(reviews) {
                     <div style="font-size: 0.75rem; color: var(--text-muted);">${date}</div>
                 </div>
                 <p style="font-size: 0.875rem; color: var(--text-main); line-height: 1.4;">${comment}</p>
+                ${responseHtml}
             </div>
         `;
     }).join('');
+
+    if (clearContainer) {
+        container.innerHTML = reviewsHtml;
+    } else {
+        container.insertAdjacentHTML('beforeend', reviewsHtml);
+    }
 
     // re-init icons for the new review stars
     if (window.lucide) window.lucide.createIcons();
@@ -402,6 +449,21 @@ function setupProfileActions(providerId) {
                 alert("Error confirmation subscription: " + error.message);
             }
         }
+    });
+
+    const loadMoreBtn = document.getElementById("loadMoreReviewsBtn");
+    loadMoreBtn?.addEventListener("click", async () => {
+        loadMoreBtn.disabled = true;
+        loadMoreBtn.innerHTML = '<i class="spinner" style="width: 14px; height: 14px; border: 2px solid #fff; border-top-color: transparent; border-radius: 50%; display: inline-block; animation: spin 1s linear infinite; vertical-align: middle; margin-right: 4px;"></i> Loading...';
+
+        await fetchAndRenderReviews(providerId);
+
+        loadMoreBtn.disabled = false;
+        loadMoreBtn.innerHTML = `
+            <i data-lucide="chevron-down" style="width: 16px; height: 16px;"></i>
+            View More Reviews
+        `;
+        if (window.lucide) window.lucide.createIcons();
     });
 }
 
@@ -519,6 +581,57 @@ function getSubscriptionStatus(provider) {
     if (now < endDate) return 'Active';
     if (graceDate && now <= graceDate) return 'Grace';
     return 'Expired';
+}
+
+function renderComplianceExpiries(provider) {
+    const section = document.getElementById("compliance-section");
+    const list = document.getElementById("compliance-expiries-list");
+    if (!section || !list) return;
+
+    const docs = provider.documents || {};
+    const expiries = [
+        { label: 'Roadworthy Cert', date: docs.roadworthyExpiry },
+        { label: 'PrDP Permit', date: docs.prdpExpiry }
+    ];
+
+    const now = new Date();
+    let hasExpiries = false;
+
+    const html = expiries.map(item => {
+        const expDate = ensureDate(item.date);
+        if (!expDate) return '';
+
+        hasExpiries = true;
+        const diffDays = Math.ceil((expDate - now) / (1000 * 60 * 60 * 24));
+
+        let statusClass = 'badge-active'; // Green (> 30 days)
+        let warningText = `${diffDays} days remaining`;
+
+        if (diffDays <= 0) {
+            statusClass = 'badge-rejected'; // Red (Expired)
+            warningText = `EXPIRED (${Math.abs(diffDays)} days ago)`;
+        } else if (diffDays <= 30) {
+            statusClass = 'badge-warning'; // Orange (< 30 days)
+            warningText = `${diffDays} days left (Renew Soon)`;
+        }
+
+        return `
+            <div style="margin-bottom: 1rem; padding-bottom: 0.75rem; border-bottom: 1px dashed var(--border-color);">
+                <div style="font-size: 0.75rem; font-weight: 600; color: var(--text-muted); text-transform: uppercase; margin-bottom: 0.25rem;">${item.label}</div>
+                <div style="display: flex; justify-content: space-between; align-items: center;">
+                    <span style="font-size: 0.875rem; font-weight: 500;">${formatDate(expDate)}</span>
+                    <span class="badge ${statusClass}" style="font-size: 0.7rem;">${warningText.toUpperCase()}</span>
+                </div>
+            </div>
+        `;
+    }).join('');
+
+    if (hasExpiries) {
+        list.innerHTML = html;
+        section.style.display = 'block';
+    } else {
+        section.style.display = 'none';
+    }
 }
 
 function renderSubscriptionData(provider) {

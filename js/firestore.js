@@ -10,7 +10,8 @@ import {
     getCountFromServer,
     doc,
     getDoc,
-    updateDoc
+    updateDoc,
+    startAfter
 } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
 import { app } from "./firebase-config.js";
 
@@ -117,7 +118,7 @@ export async function updateProviderStatus(id, updates) {
 }
 
 /**
- * Fetches reviews for a specific provider
+ * Fetches reviews for a specific provider (All at once - legacy)
  */
 export async function getProviderReviews(providerId) {
     try {
@@ -132,26 +133,42 @@ export async function getProviderReviews(providerId) {
         return snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
     } catch (error) {
         console.error("Error fetching reviews:", error);
-        // Fallback if index is missing
-        if (error.code === 'failed-precondition') {
-            console.warn("Missing index for reviews query, falling back to client-side sort");
-            try {
-                const reviewsRef = collection(db, "reviews");
-                const q = query(reviewsRef, where("providerId", "==", providerId));
-                const snapshot = await getDocs(q);
-                const reviews = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-                // Client-side sort
-                return reviews.sort((a, b) => {
-                    const timeA = a.createdAt?.seconds || 0;
-                    const timeB = b.createdAt?.seconds || 0;
-                    return timeB - timeA;
-                });
-            } catch (retryError) {
-                console.error("Retry failed:", retryError);
-                return [];
-            }
-        }
         return [];
+    }
+}
+
+/**
+ * Fetches reviews for a specific provider with pagination
+ */
+export async function getPaginatedReviews(providerId, limitCount = 4, lastDoc = null) {
+    try {
+        const reviewsRef = collection(db, "reviews");
+        let q;
+
+        const constraints = [
+            where("providerId", "==", providerId),
+            orderBy("createdAt", "desc"),
+            limit(limitCount)
+        ];
+
+        if (lastDoc) {
+            constraints.splice(2, 0, startAfter(lastDoc));
+        }
+
+        q = query(reviewsRef, ...constraints);
+        const snapshot = await getDocs(q);
+
+        const reviews = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+        const lastVisible = snapshot.docs[snapshot.docs.length - 1];
+
+        return {
+            reviews,
+            lastDoc: lastVisible,
+            hasMore: snapshot.docs.length === limitCount
+        };
+    } catch (error) {
+        console.error("Error fetching paginated reviews:", error);
+        return { reviews: [], lastDoc: null, hasMore: false };
     }
 }
 /**

@@ -264,6 +264,14 @@
                         <div id="review-container">
                             <p style="color: var(--text-muted); font-style: italic;">Loading reviews...</p>
                         </div>
+                        <div id="load-more-container"
+                            style="padding-top: 1rem; border-top: 1px solid var(--border-color); display: none; justify-content: center;">
+                            <button id="loadMoreReviewsBtn" class="btn-ghost"
+                                style="font-size: 0.875rem; width: 100%; display: flex; align-items: center; justify-content: center; gap: 0.5rem; color: var(--primary-color);">
+                                <i data-lucide="chevron-down" style="width: 16px; height: 16px;"></i>
+                                View More Reviews
+                            </button>
+                        </div>
                     </section>
                 </div>
 
@@ -314,6 +322,15 @@
                             style="background-color: var(--accent); display: none;">
                             <i data-lucide="refresh-cw"></i> Confirm Subscription Payment
                         </button>
+                    </section>
+
+                    <!-- Compliance Expiries -->
+                    <section class="info-section" id="compliance-section" style="display: none;">
+                        <h2 class="section-title" style="font-size: 1rem;"><i data-lucide="alert-triangle"></i>
+                            Compliance Expiries</h2>
+                        <div id="compliance-expiries-list">
+                            <!-- Injected via JS -->
+                        </div>
                     </section>
 
                     <!-- Verification Actions -->
