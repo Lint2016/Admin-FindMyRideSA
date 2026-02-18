@@ -172,6 +172,112 @@ export async function getPaginatedReviews(providerId, limitCount = 4, lastDoc = 
     }
 }
 /**
+ * Fetches all providers that are currently hidden from the public search page.
+ * Combines Firestore-filtered queries (rejected/pending) with client-side
+ * evaluation of availability status, subscription expiry, and document expiry.
+ *
+ * @returns {Promise<Array>} Array of provider objects, each with a `hiddenReasons` string[].
+ */
+export async function getHiddenProviders() {
+    try {
+        const providersRef = collection(db, "providers");
+        const now = new Date();
+
+        // --- 1. Firestore-filtered: status-based hidden providers ---
+        const [rejectedSnap, pendingSnap, activeSnap] = await Promise.all([
+            getDocs(query(providersRef, where("status", "==", "rejected"), limit(200))),
+            getDocs(query(providersRef, where("status", "==", "pending"), limit(200))),
+            getDocs(query(providersRef, where("status", "==", "active"), limit(200)))
+        ]);
+
+        const toObj = (snap) => snap.docs.map(d => ({ id: d.id, ...d.data() }));
+
+        const rejectedProviders = toObj(rejectedSnap).map(p => ({
+            ...p,
+            hiddenReasons: ["Profile Rejected by Admin"]
+        }));
+
+        const pendingProviders = toObj(pendingSnap).map(p => ({
+            ...p,
+            hiddenReasons: ["Pending Admin Approval"]
+        }));
+
+        // --- 2. Client-side evaluation for active providers ---
+        const activeProviders = toObj(activeSnap);
+        const activeHidden = [];
+
+        for (const p of activeProviders) {
+            const reasons = [];
+
+            // Availability status
+            const avail = (p.availabilityStatus || "").toLowerCase();
+            if (avail === "full" || avail === "fully booked") {
+                reasons.push("Fully Booked");
+            } else if (avail === "unavailable" || avail === "temporary" || avail === "temporarily unavailable") {
+                reasons.push("Temporarily Unavailable");
+            }
+
+            // Subscription expiry
+            const subEnd = p.subscriptionEndDate ? new Date(
+                typeof p.subscriptionEndDate === "object" && p.subscriptionEndDate.seconds
+                    ? p.subscriptionEndDate.seconds * 1000
+                    : p.subscriptionEndDate
+            ) : null;
+            const graceEnd = p.gracePeriodEndDate ? new Date(
+                typeof p.gracePeriodEndDate === "object" && p.gracePeriodEndDate.seconds
+                    ? p.gracePeriodEndDate.seconds * 1000
+                    : p.gracePeriodEndDate
+            ) : null;
+
+            const subExpired = !subEnd || now > subEnd;
+            const graceExpired = !graceEnd || now > graceEnd;
+            if (subExpired && graceExpired) {
+                reasons.push("Subscription Not Paid / Expired");
+            }
+
+            // Document expiry — PrDP
+            const prdpExpiry = p.documents?.prdpExpiry ? new Date(
+                typeof p.documents.prdpExpiry === "object" && p.documents.prdpExpiry.seconds
+                    ? p.documents.prdpExpiry.seconds * 1000
+                    : p.documents.prdpExpiry
+            ) : null;
+            if (prdpExpiry && now > prdpExpiry) {
+                reasons.push("PrDP Permit Expired");
+            }
+
+            // Document expiry — Roadworthy
+            const rwExpiry = p.documents?.roadworthyExpiry ? new Date(
+                typeof p.documents.roadworthyExpiry === "object" && p.documents.roadworthyExpiry.seconds
+                    ? p.documents.roadworthyExpiry.seconds * 1000
+                    : p.documents.roadworthyExpiry
+            ) : null;
+            if (rwExpiry && now > rwExpiry) {
+                reasons.push("Roadworthy Certificate Expired");
+            }
+
+            if (reasons.length > 0) {
+                activeHidden.push({ ...p, hiddenReasons: reasons });
+            }
+        }
+
+        // --- 3. Merge all hidden providers (deduplicated by id) ---
+        const seen = new Set();
+        const merged = [];
+        for (const p of [...rejectedProviders, ...pendingProviders, ...activeHidden]) {
+            if (!seen.has(p.id)) {
+                seen.add(p.id);
+                merged.push(p);
+            }
+        }
+
+        return merged;
+    } catch (error) {
+        console.error("Error fetching hidden providers:", error);
+        return [];
+    }
+}
+
+/**
  * Confirms a monthly subscription payment and updates the period dates
  */
 export async function confirmSubscriptionPayment(id) {

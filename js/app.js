@@ -1,6 +1,6 @@
 // Main Application Controller
 import { login, logout, initAuthGuard } from "./auth.js";
-import { getDashboardMetrics, getRecentProviders, getProviderById, updateProviderStatus, getPaginatedReviews, confirmSubscriptionPayment } from "./firestore.js";
+import { getDashboardMetrics, getRecentProviders, getProviderById, updateProviderStatus, getPaginatedReviews, confirmSubscriptionPayment, getHiddenProviders } from "./firestore.js";
 
 // DOM Elements
 const loginForm = document.getElementById("loginForm");
@@ -14,6 +14,7 @@ const searchWrapper = document.getElementById("search-wrapper");
 let allProviders = []; // Global store for client-side filtering
 let currentFilter = null;
 let isPaymentView = false;
+let isHiddenView = false;
 
 // Profile Page Elements
 const profileName = document.getElementById("provider-name");
@@ -81,12 +82,13 @@ async function refreshMetrics() {
 
 function setupDashboardFilters() {
     const filters = [
-        { id: 'filter-dashboard', status: null, title: 'Overview', tableTitle: 'Recent Provider Registrations', isPayments: false },
-        { id: 'filter-pending', status: 'pending', title: 'Pending Providers', tableTitle: 'Providers Awaiting Approval', isPayments: false },
-        { id: 'filter-active', status: 'active', title: 'Active Providers', tableTitle: 'Live Service Providers', isPayments: false },
-        { id: 'filter-payments', status: null, title: 'Payments', tableTitle: 'Financial Overview', isPayments: true },
-        { id: 'filter-pay-reg', status: 'reg', title: 'Registration Payments', tableTitle: 'Provider Registration Fees', isPayments: true },
-        { id: 'filter-pay-sub', status: 'sub', title: 'Subscription Payments', tableTitle: 'Monthly Subscription Renewals', isPayments: true }
+        { id: 'filter-dashboard', status: null, title: 'Overview', tableTitle: 'Recent Provider Registrations', isPayments: false, isHidden: false },
+        { id: 'filter-pending', status: 'pending', title: 'Pending Providers', tableTitle: 'Providers Awaiting Approval', isPayments: false, isHidden: false },
+        { id: 'filter-active', status: 'active', title: 'Active Providers', tableTitle: 'Live Service Providers', isPayments: false, isHidden: false },
+        { id: 'filter-hidden', status: 'hidden', title: 'Hidden Providers', tableTitle: 'Providers Hidden from Search', isPayments: false, isHidden: true },
+        { id: 'filter-payments', status: null, title: 'Payments', tableTitle: 'Financial Overview', isPayments: true, isHidden: false },
+        { id: 'filter-pay-reg', status: 'reg', title: 'Registration Payments', tableTitle: 'Provider Registration Fees', isPayments: true, isHidden: false },
+        { id: 'filter-pay-sub', status: 'sub', title: 'Subscription Payments', tableTitle: 'Monthly Subscription Renewals', isPayments: true, isHidden: false }
     ];
 
     filters.forEach(filter => {
@@ -106,6 +108,7 @@ function setupDashboardFilters() {
 
                 // Update View State
                 isPaymentView = filter.isPayments;
+                isHiddenView = filter.isHidden;
                 currentFilter = filter.status;
                 if (searchWrapper) searchWrapper.style.display = isPaymentView ? 'block' : 'none';
                 if (searchInput) searchInput.value = '';
@@ -116,7 +119,7 @@ function setupDashboardFilters() {
                 if (tableTitle) tableTitle.textContent = filter.tableTitle;
 
                 // Update Table Header
-                updateTableHeader(isPaymentView, currentFilter);
+                updateTableHeader(isPaymentView, currentFilter, isHiddenView);
 
                 // Show loading state in table
                 if (providerTableBody) {
@@ -124,13 +127,16 @@ function setupDashboardFilters() {
                 }
 
                 // Fetch and render
-                // For pay-reg and pay-sub, we still fetch recent providers but filter logic in render
-                const fetchStatus = (filter.status === 'reg' || filter.status === 'sub') ? null : filter.status;
-                allProviders = await getRecentProviders(filter.isPayments ? 100 : 20, fetchStatus);
-
-                if (isPaymentView) {
+                if (isHiddenView) {
+                    allProviders = await getHiddenProviders();
+                    renderHiddenTable(allProviders);
+                } else if (isPaymentView) {
+                    const fetchStatus = (filter.status === 'reg' || filter.status === 'sub') ? null : filter.status;
+                    allProviders = await getRecentProviders(100, fetchStatus);
                     renderPaymentTable(allProviders, filter.status);
                 } else {
+                    const fetchStatus = filter.status === 'hidden' ? null : filter.status;
+                    allProviders = await getRecentProviders(20, fetchStatus);
                     const emptyMsg = filter.status
                         ? `No providers found with status: ${filter.status.toUpperCase()}`
                         : "No providers found in the database.";
@@ -144,11 +150,21 @@ function setupDashboardFilters() {
     });
 }
 
-function updateTableHeader(isPayments, paymentType = null) {
+function updateTableHeader(isPayments, paymentType = null, isHidden = false) {
     const tableHead = document.getElementById('tableHead');
     if (!tableHead) return;
 
-    if (isPayments) {
+    if (isHidden) {
+        tableHead.innerHTML = `
+            <tr>
+                <th>Provider Name</th>
+                <th>Hidden Reason(s)</th>
+                <th>Availability</th>
+                <th>Status</th>
+                <th>Action</th>
+            </tr>
+        `;
+    } else if (isPayments) {
         if (paymentType === 'sub') {
             tableHead.innerHTML = `
                 <tr>
@@ -870,6 +886,82 @@ function renderPaymentTable(providers, paymentType = 'reg', emptyMessage = "No p
             `;
         }
     }).join('');
+}
+
+/**
+ * Maps a hidden reason string to a CSS badge class for colour coding.
+ * @param {string} reason
+ * @returns {string} CSS class name
+ */
+function getReasonBadgeClass(reason) {
+    if (reason.includes('Rejected')) return 'badge-rejected';
+    if (reason.includes('Pending')) return 'badge-pending';
+    if (reason.includes('Fully Booked')) return 'badge-rejected';
+    if (reason.includes('Temporarily')) return 'badge-warning';
+    if (reason.includes('Subscription')) return 'badge-warning';
+    if (reason.includes('PrDP')) return 'badge-rejected';
+    if (reason.includes('Roadworthy')) return 'badge-rejected';
+    return 'badge-pending';
+}
+
+/**
+ * Renders the Hidden Providers table.
+ * Each row shows the provider name, colour-coded reason pills,
+ * availability status, account status, and a Review action button.
+ * @param {Array} providers - Array of provider objects with a `hiddenReasons` string[].
+ */
+function renderHiddenTable(providers) {
+    if (!providerTableBody) return;
+
+    if (providers.length === 0) {
+        providerTableBody.innerHTML = `
+            <tr>
+                <td colspan="5" style="text-align: center; padding: 3rem; color: var(--text-muted);">
+                    <div style="display: flex; flex-direction: column; align-items: center; gap: 1rem;">
+                        <i data-lucide="eye" style="width: 48px; height: 48px; opacity: 0.5;"></i>
+                        <p>No hidden providers found. All active providers are visible on the search page.</p>
+                    </div>
+                </td>
+            </tr>
+        `;
+        if (window.lucide) window.lucide.createIcons();
+        return;
+    }
+
+    providerTableBody.innerHTML = providers.map(provider => {
+        const name = provider.fullName || provider.name || provider.businessName || 'N/A';
+        const reasons = Array.isArray(provider.hiddenReasons) ? provider.hiddenReasons : ['Unknown'];
+
+        // Build reason pills
+        const reasonPills = reasons
+            .map(r => `<span class="badge ${getReasonBadgeClass(r)}" style="font-size: 0.7rem; margin: 2px 2px 2px 0; display: inline-block;">${r}</span>`)
+            .join('');
+
+        // Availability display
+        const avail = (provider.availabilityStatus || 'available').toLowerCase();
+        const availLabel = avail === 'full' || avail === 'fully booked'
+            ? 'Fully Booked'
+            : avail === 'unavailable' || avail === 'temporary' || avail === 'temporarily unavailable'
+                ? 'Unavailable'
+                : 'Available';
+        const availClass = availLabel === 'Available' ? 'badge-active' : 'badge-rejected';
+
+        return `
+            <tr>
+                <td style="font-weight: 500;">${name}</td>
+                <td style="max-width: 260px; white-space: normal; line-height: 1.6;">${reasonPills}</td>
+                <td><span class="badge ${availClass}" style="font-size: 0.7rem;">${availLabel.toUpperCase()}</span></td>
+                <td>${renderStatusBadge(provider.status)}</td>
+                <td>
+                    <button class="btn-primary" style="padding: 0.4rem 0.8rem; font-size: 0.75rem; width: auto;" onclick="viewProfile('${provider.id}')">
+                        Review
+                    </button>
+                </td>
+            </tr>
+        `;
+    }).join('');
+
+    if (window.lucide) window.lucide.createIcons();
 }
 
 function renderSourceBadge(source) {
