@@ -29,16 +29,15 @@ export async function getDashboardMetrics() {
         const thirtyDaysFromNow = new Date();
         thirtyDaysFromNow.setDate(now.getDate() + 30);
 
-        // Use parallel promises for efficiency
-        const [totalCount, pendingCount, activeCount] = await Promise.all([
+        // Fetch counts for main statuses
+        const [totalCount, pendingCount, activeCount, rejectedCount] = await Promise.all([
             getCountFromServer(providersRef),
             getCountFromServer(query(providersRef, where("status", "==", "pending"))),
-            getCountFromServer(query(providersRef, where("status", "==", "active")))
+            getCountFromServer(query(providersRef, where("status", "==", "active"))),
+            getCountFromServer(query(providersRef, where("status", "==", "rejected")))
         ]);
 
-        // For expirations, we'll do a simple query for one field and combine counts if needed,
-        // or fetch recent active ones to check. For now, let's fetch those with PrDP expiring soon.
-        // NOTE: This might need an index.
+        // Expiring soon count
         const expiringPrdpQuery = query(
             providersRef,
             where("documents.prdpExpiry", ">", now.toISOString()),
@@ -50,12 +49,13 @@ export async function getDashboardMetrics() {
             total: totalCount.data().count,
             pending: pendingCount.data().count,
             active: activeCount.data().count,
+            rejected: rejectedCount.data().count,
             expiringSoon: expiringPrdpSnap.data().count,
-            paymentsPending: 0 // Placeholder logic
+            paymentsPending: 0 // Placeholder
         };
     } catch (error) {
         console.error("Error fetching metrics:", error);
-        return { total: 0, pending: 0, active: 0, expiringSoon: 0, paymentsPending: 0 };
+        return { total: 0, pending: 0, active: 0, rejected: 0, expiringSoon: 0, paymentsPending: 0 };
     }
 }
 

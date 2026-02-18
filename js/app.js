@@ -17,6 +17,7 @@ let isPaymentView = false;
 let isHiddenView = false;
 let isAuditView = false;
 let selectedProviders = []; // IDs for bulk actions
+let sortConfig = { key: null, direction: 'asc' }; // For sorting
 
 // Profile Page Elements
 const profileName = document.getElementById("provider-name");
@@ -91,23 +92,73 @@ async function refreshMetrics() {
 function renderSidebarBadges(metrics) {
     const badges = [
         { id: 'filter-pending', count: metrics.pending },
-        { id: 'filter-hidden', count: 0 }, // We don't have a fast count for this yet, maybe fetch later
+        { id: 'filter-active', count: metrics.active },
+        { id: 'filter-hidden', count: 0 }, // Hidden is client-side, hard to count without fetch
+        { id: 'filter-rejected', count: metrics.rejected },
     ];
 
     badges.forEach(badge => {
         const btn = document.getElementById(badge.id);
-        if (btn && badge.count > 0) {
-            // Remove existing badge if any
-            const existing = btn.querySelector('.sidebar-badge');
-            if (existing) existing.remove();
+        if (!btn) return;
 
+        // Remove existing badge
+        const existing = btn.querySelector('.sidebar-badge');
+        if (existing) existing.remove();
+
+        if (badge.count > 0) {
             const badgeEl = document.createElement('span');
             badgeEl.className = 'sidebar-badge';
-            badgeEl.style.cssText = "background: var(--status-rejected); color: white; border-radius: 10px; padding: 0.1rem 0.5rem; font-size: 0.7rem; margin-left: auto; font-weight: 700;";
+            badgeEl.style.cssText = `background: ${badge.id === 'filter-pending' ? 'var(--status-rejected)' : 'var(--text-muted)'}; color: white; border-radius: 10px; padding: 0.1rem 0.5rem; font-size: 0.7rem; margin-left: auto; font-weight: 700;`;
             badgeEl.textContent = badge.count;
             btn.appendChild(badgeEl);
         }
     });
+}
+
+function showToast(message, type = 'success') {
+    const container = document.getElementById('toast-container');
+    if (!container) return;
+
+    const toast = document.createElement('div');
+    toast.className = `toast toast-${type}`;
+
+    let icon = 'info';
+    if (type === 'success') icon = 'check-circle';
+    if (type === 'error') icon = 'alert-octagon';
+    if (type === 'warning') icon = 'alert-triangle';
+
+    toast.innerHTML = `
+        <i data-lucide="${icon}" style="width: 20px; height: 20px;"></i>
+        <span style="font-size: 0.875rem; font-weight: 500;">${message}</span>
+    `;
+
+    container.appendChild(toast);
+    if (window.lucide) window.lucide.createIcons();
+
+    // Auto remove after 4 seconds
+    setTimeout(() => {
+        toast.style.transform = 'translateX(120%)';
+        toast.style.opacity = '0';
+        toast.style.transition = 'all 0.3s ease';
+        setTimeout(() => toast.remove(), 300);
+    }, 4000);
+}
+
+function renderSkeletonRows(count = 5) {
+    if (!providerTableBody) return;
+
+    // Check header columns
+    const colCount = document.querySelectorAll('#tableHead th').length;
+
+    providerTableBody.innerHTML = Array(count).fill(0).map(() => `
+        <tr class="skeleton-row">
+            ${Array(colCount).fill(0).map(() => `
+                <td style="padding: 1.25rem;">
+                    <div style="height: 12px; width: 80%; background: #f1f5f9; border-radius: 4px;"></div>
+                </td>
+            `).join('')}
+        </tr>
+    `).join('');
 }
 
 function renderAlertBanner(metrics) {
@@ -179,10 +230,8 @@ function setupDashboardFilters() {
                 // Clear selection on filter change
                 clearSelection();
 
-                // Show loading state in table
-                if (providerTableBody) {
-                    providerTableBody.innerHTML = '<tr><td colspan="7" style="text-align: center; padding: 2rem;">Loading data...</td></tr>';
-                }
+                // Show loading state with skeletons
+                renderSkeletonRows(8);
 
                 // Fetch and render
                 if (isAuditView) {
@@ -218,10 +267,10 @@ function updateTableHeader(isPayments, paymentType = null, isHidden = false, isA
     if (isAudit) {
         tableHead.innerHTML = `
             <tr>
-                <th style="padding-left: 1.5rem;">Timestamp</th>
-                <th>Action</th>
+                <th style="padding-left: 1.5rem;" class="sortable" data-key="timestamp">Timestamp</th>
+                <th class="sortable" data-key="action">Action</th>
                 <th>Details</th>
-                <th>Admin</th>
+                <th class="sortable" data-key="adminEmail">Admin</th>
             </tr>
         `;
     } else if (isHidden) {
@@ -230,10 +279,10 @@ function updateTableHeader(isPayments, paymentType = null, isHidden = false, isA
                 <th style="width: 40px; padding-left: 1.5rem;">
                     <input type="checkbox" id="selectAllProviders" style="cursor: pointer;">
                 </th>
-                <th>Provider Name</th>
+                <th class="sortable" data-key="name">Provider Name</th>
                 <th>Hidden Reason(s)</th>
-                <th>Availability</th>
-                <th>Status</th>
+                <th class="sortable" data-key="availabilityStatus">Availability</th>
+                <th class="sortable" data-key="status">Status</th>
                 <th>Action</th>
             </tr>
         `;
@@ -244,10 +293,10 @@ function updateTableHeader(isPayments, paymentType = null, isHidden = false, isA
                     <th style="width: 40px; padding-left: 1.5rem;">
                         <input type="checkbox" id="selectAllProviders" style="cursor: pointer;">
                     </th>
-                    <th>Provider Name</th>
-                    <th>Subscription End</th>
-                    <th>Status</th>
-                    <th>Last Payment</th>
+                    <th class="sortable" data-key="name">Provider Name</th>
+                    <th class="sortable" data-key="subscriptionEndDate">Subscription End</th>
+                    <th class="sortable" data-key="status">Status</th>
+                    <th class="sortable" data-key="lastPaymentDate">Last Payment</th>
                     <th>Billing</th>
                     <th>Action</th>
                 </tr>
@@ -258,11 +307,11 @@ function updateTableHeader(isPayments, paymentType = null, isHidden = false, isA
                     <th style="width: 40px; padding-left: 1.5rem;">
                         <input type="checkbox" id="selectAllProviders" style="cursor: pointer;">
                     </th>
-                    <th>Provider Name</th>
-                    <th>Phone Number</th>
+                    <th class="sortable" data-key="name">Provider Name</th>
+                    <th class="sortable" data-key="phone">Phone Number</th>
                     <th>Payment Type</th>
-                    <th>Amount</th>
-                    <th>Status</th>
+                    <th class="sortable" data-key="amount">Amount</th>
+                    <th class="sortable" data-key="paymentStatus">Status</th>
                     <th>Action</th>
                 </tr>
             `;
@@ -273,15 +322,24 @@ function updateTableHeader(isPayments, paymentType = null, isHidden = false, isA
                 <th style="width: 40px; padding-left: 1.5rem;">
                     <input type="checkbox" id="selectAllProviders" style="cursor: pointer;">
                 </th>
-                <th>Provider Name</th>
-                <th>Service Area</th>
-                <th>Source</th>
-                <th>Payment</th>
-                <th>Status</th>
+                <th class="sortable" data-key="name">Provider Name</th>
+                <th class="sortable" data-key="serviceArea">Service Area</th>
+                <th class="sortable" data-key="referralSource">Source</th>
+                <th class="sortable" data-key="paymentStatus">Payment</th>
+                <th class="sortable" data-key="status">Status</th>
                 <th>Action</th>
             </tr>
         `;
     }
+
+    // Add Sort Classes
+    document.querySelectorAll('.sortable').forEach(th => {
+        th.style.cursor = 'pointer';
+        th.innerHTML += ' <i data-lucide="chevrons-up-down" style="width: 12px; height: 12px; opacity: 0.5;"></i>';
+        th.onclick = () => sortProviders(th.getAttribute('data-key'));
+    });
+
+    if (window.lucide) window.lucide.createIcons();
 
     // Re-bind select all
     const selectAll = document.getElementById('selectAllProviders');
@@ -657,9 +715,14 @@ async function handleStatusUpdate(id, updates, title = "Update Success", message
             adminEmail
         });
 
-        showSuccessModal(title, message);
+        // Use Toast instead of success modal where appropriate, or both
+        showToast(message);
+        if (typeof showSuccessModal === 'function') showSuccessModal(title, message);
+
+        // Refresh metrics to update sidebar badges
+        refreshMetrics();
     } catch (error) {
-        alert("Error updating provider: " + error.message);
+        showToast("Error updating provider: " + error.message, "error");
     }
 }
 
@@ -1272,10 +1335,10 @@ async function handleBulkAction(newStatus) {
             adminEmail
         });
 
-        alert(`Successfully updated ${count} providers.`);
-        location.reload();
+        showToast(`Successfully updated ${count} providers.`);
+        setTimeout(() => location.reload(), 1500);
     } catch (error) {
-        alert("Error during bulk action: " + error.message);
+        showToast("Error during bulk action: " + error.message, "error");
         if (btn) {
             btn.disabled = false;
             btn.textContent = newStatus === 'active' ? 'Approve Selected' : 'Reject Selected';
@@ -1322,5 +1385,84 @@ function renderActivityLogTable(logs) {
         `;
     }).join('');
 }
+
+// --- PDF Export ---
+
+document.getElementById('exportPdfBtn')?.addEventListener('click', exportTableToPDF);
+
+function exportTableToPDF() {
+    const { jsPDF } = window.jspdf;
+    const doc = new jsPDF();
+
+    const tableTitle = document.getElementById('table-title')?.textContent || 'Provider Report';
+    const timestamp = new Date().toLocaleString();
+
+    doc.setFontSize(18);
+    doc.text(tableTitle, 14, 20);
+    doc.setFontSize(10);
+    doc.text(`Generated on: ${timestamp}`, 14, 30);
+
+    const headers = [];
+    document.querySelectorAll('#tableHead th').forEach((th, i) => {
+        if (i === 0 && th.querySelector('input')) return;
+        headers.push(th.textContent.trim());
+    });
+
+    const data = allProviders.map(p => {
+        const name = p.fullName || p.name || p.businessName || 'N/A';
+        if (isHiddenView) {
+            return [name, (p.hiddenReasons || []).join(', '), p.availabilityStatus || 'N/A', p.status || 'N/A'];
+        } else if (isPaymentView) {
+            return [name, p.phoneNumber || 'N/A', 'Registration', 'R 200', p.paymentStatus || 'N/A'];
+        } else {
+            return [name, p.serviceArea || p.city || 'N/A', 'Search', p.paymentStatus || 'N/A', p.status || 'N/A'];
+        }
+    });
+
+    doc.autoTable({
+        head: [headers],
+        body: data,
+        startY: 40,
+        theme: 'striped',
+        headStyles: { fillColor: [37, 99, 235] }
+    });
+
+    doc.save(`${tableTitle.replace(/\s+/g, '_').toLowerCase()}.pdf`);
+    showToast("PDF report generated successfully!");
+}
+
+// --- Sorting Logic ---
+
+function sortProviders(key) {
+    if (!allProviders || allProviders.length === 0) return;
+
+    if (sortConfig.key === key) {
+        sortConfig.direction = sortConfig.direction === 'asc' ? 'desc' : 'asc';
+    } else {
+        sortConfig.key = key;
+        sortConfig.direction = 'asc';
+    }
+
+    allProviders.sort((a, b) => {
+        let valA = (a[key] || '').toString().toLowerCase();
+        let valB = (b[key] || '').toString().toLowerCase();
+
+        if (key === 'name') {
+            valA = (a.fullName || a.name || a.businessName || '').toLowerCase();
+            valB = (b.fullName || b.name || b.businessName || '').toLowerCase();
+        }
+
+        if (valA < valB) return sortConfig.direction === 'asc' ? -1 : 1;
+        if (valA > valB) return sortConfig.direction === 'asc' ? 1 : -1;
+        return 0;
+    });
+
+    if (isHiddenView) renderHiddenTable(allProviders);
+    else if (isPaymentView) renderPaymentTable(allProviders, currentFilter);
+    else renderProviderTable(allProviders);
+
+    showToast(`Sorted by ${key} (${sortConfig.direction})`);
+}
+
 
 

@@ -9,6 +9,8 @@
     <link rel="stylesheet" href="css/styles.css">
     <!-- Lucide Icons -->
     <script src="https://unpkg.com/lucide@latest"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.5.31/jspdf.plugin.autotable.min.js"></script>
 </head>
 
 <body class="hidden" id="appBody">
@@ -100,39 +102,49 @@
             <section class="card-table">
                 <div
                     style="padding: 1.5rem; border-bottom: 1px solid var(--border-color); display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 1rem;">
-                    <h2 style="font-size: 1.125rem; font-weight: 700;" id="table-title">Recent Provider Registrations
-                    </h2>
-
-                    <div id="search-wrapper" style="display: none; position: relative; width: 300px;">
-                        <i data-lucide="search"
-                            style="position: absolute; left: 0.75rem; top: 50%; transform: translateY(-50%); width: 16px; height: 16px; color: var(--text-muted);"></i>
-                        <input type="text" id="searchInput" placeholder="Search name or phone..."
-                            style="padding: 0.5rem 0.5rem 0.5rem 2.25rem; font-size: 0.875rem; border: 1px solid var(--border-color); border-radius: var(--radius-md); width: 100%; outline: none; border: 1px solid var(--border-color);">
+                    <div>
+                        <h2 class="section-title" id="table-title">Recent Provider Registrations</h2>
+                        <p style="color: var(--text-muted); font-size: 0.875rem;">Manage and review transport service
+                            providers</p>
+                    </div>
+                    <div style="display: flex; gap: 0.75rem;">
+                        <button class="btn-primary" id="exportPdfBtn"
+                            style="background-color: var(--text-main); font-size: 0.75rem; width: auto; padding: 0.5rem 1rem; display: flex; align-items: center; gap: 0.5rem;">
+                            <i data-lucide="file-text" style="width: 14px; height: 14px;"></i> Export PDF
+                        </button>
+                        <div id="search-wrapper" style="position: relative; width: 300px;">
+                            <i data-lucide="search"
+                                style="position: absolute; left: 0.75rem; top: 50%; transform: translateY(-50%); width: 16px; height: 16px; color: var(--text-muted);"></i>
+                            <input type="text" id="searchInput" placeholder="Search name or phone..."
+                                style="padding: 0.5rem 0.5rem 0.5rem 2.25rem; font-size: 0.875rem; border: 1px solid var(--border-color); border-radius: var(--radius-md); width: 100%; outline: none; border: 1px solid var(--border-color);">
+                        </div>
                     </div>
                 </div>
-                <table id="mainTable">
-                    <thead id="tableHead">
-                        <tr>
-                            <th style="width: 40px; padding-left: 1.5rem;">
-                                <input type="checkbox" id="selectAllProviders" style="cursor: pointer;">
-                            </th>
-                            <th>Provider Name</th>
-                            <th>Service Area</th>
-                            <th>Source</th>
-                            <th>Payment</th>
-                            <th>Status</th>
-                            <th>Action</th>
-                        </tr>
-                    </thead>
-                    <tbody id="providerTableBody">
-                        <!-- Data will be injected here -->
-                        <tr>
-                            <td colspan="6" style="text-align: center; padding: 2rem; color: var(--text-muted);">
-                                Loading provider data...
-                            </td>
-                        </tr>
-                    </tbody>
-                </table>
+                <div class="table-wrapper">
+                    <table id="mainTable">
+                        <thead id="tableHead">
+                            <tr>
+                                <th style="width: 40px; padding-left: 1.5rem;">
+                                    <input type="checkbox" id="selectAllProviders" style="cursor: pointer;">
+                                </th>
+                                <th>Provider Name</th>
+                                <th>Service Area</th>
+                                <th>Source</th>
+                                <th>Payment</th>
+                                <th>Status</th>
+                                <th>Action</th>
+                            </tr>
+                        </thead>
+                        <tbody id="providerTableBody">
+                            <!-- Data will be injected here -->
+                            <tr>
+                                <td colspan="7" style="text-align: center; padding: 2rem; color: var(--text-muted);">
+                                    Loading provider data...
+                                </td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
             </section>
         </main>
     </div>
@@ -157,6 +169,8 @@
             </button>
         </div>
     </div>
+
+    <div id="toast-container"></div>
 
     <!-- Scripts -->
     <script type="module" src="js/app.js"></script>
