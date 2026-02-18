@@ -1,4 +1,5 @@
 // Main Application Controller
+console.log("--- FindMyRide Admin Core Initializing ---");
 import { login, logout, initAuthGuard } from "./auth.js";
 import { getDashboardMetrics, getRecentProviders, getProviderById, updateProviderStatus, getPaginatedReviews, confirmSubscriptionPayment, getHiddenProviders, logActivity, getActivityLogs } from "./firestore.js";
 
@@ -43,6 +44,10 @@ document.addEventListener("DOMContentLoaded", () => {
 
 // --- Dashboard Logic ---
 async function initDashboard(user) {
+    // Priority: Setup mobile & session first (non-async, runs instantly)
+    setupMobileSidebar();
+    setupSessionTimeout();
+
     const adminEmailEl = document.getElementById("admin-email");
     if (adminEmailEl) adminEmailEl.textContent = user.email;
 
@@ -75,12 +80,6 @@ async function initDashboard(user) {
             }
         });
     }
-
-    // Init Session Timeout
-    setupSessionTimeout();
-
-    // Init Mobile Sidebar
-    setupMobileSidebar();
 }
 
 async function refreshMetrics() {
@@ -369,6 +368,10 @@ function updateTableHeader(isPayments, paymentType = null, isHidden = false, isA
 
 // --- Profile View Logic ---
 async function initProfileView(user) {
+    // Priority: Setup mobile & session first (non-async, runs instantly)
+    setupMobileSidebar();
+    setupSessionTimeout();
+
     const urlParams = new URLSearchParams(window.location.search);
     const providerId = urlParams.get("id");
 
@@ -1510,23 +1513,32 @@ function setupMobileSidebar() {
     const sidebar = document.getElementById('sidebar');
     const overlay = document.getElementById('mobile-overlay');
 
-    if (!toggle || !sidebar || !overlay) return;
+    if (!toggle || !sidebar || !overlay) {
+        console.warn("Mobile navigation elements missing:", { toggle, sidebar, overlay });
+        return;
+    }
 
-    const toggleOpen = () => {
+    const toggleOpen = (e) => {
+        if (e) {
+            e.preventDefault();
+            e.stopPropagation();
+        }
+
+        console.log("Mobile toggle triggered. Sidebar state before:", sidebar.classList.contains('open'));
+
         sidebar.classList.toggle('open');
         const isOpen = sidebar.classList.contains('open');
+
         overlay.style.display = isOpen ? 'block' : 'none';
 
-        // Change icon based on state
-        const icon = toggle.querySelector('i');
-        if (icon) {
-            icon.setAttribute('data-lucide', isOpen ? 'x' : 'menu');
-            if (window.lucide) window.lucide.createIcons();
-        }
+        // Update icon
+        toggle.innerHTML = `<i data-lucide="${isOpen ? 'x' : 'menu'}" style="width: 24px; height: 24px;"></i>`;
+        if (window.lucide) window.lucide.createIcons();
     };
 
-    toggle.addEventListener('click', toggleOpen);
-    overlay.addEventListener('click', toggleOpen);
+    // Use absolute clean handler
+    toggle.onclick = toggleOpen;
+    overlay.onclick = toggleOpen;
 
     // Close on nav click (mobile)
     document.querySelectorAll('.nav-link').forEach(link => {
@@ -1534,6 +1546,8 @@ function setupMobileSidebar() {
             if (window.innerWidth <= 1024) {
                 sidebar.classList.remove('open');
                 overlay.style.display = 'none';
+                toggle.innerHTML = `<i data-lucide="menu" style="width: 24px; height: 24px;"></i>`;
+                if (window.lucide) window.lucide.createIcons();
             }
         });
     });
