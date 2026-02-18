@@ -56,6 +56,8 @@
                     </a>
                 </li>
             </nav>
+            <div id="mobile-overlay"
+                style="display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.5); z-index: 900;"></div>
             <div class="sidebar-footer">
                 <a href="#" id="logoutBtn" class="nav-link">
                     <i data-lucide="log-out"></i> Logout
@@ -65,13 +67,18 @@
 
         <!-- Main Content -->
         <main class="main-content">
-            <header class="page-header">
-                <div>
-                    <h1 class="page-title" id="page-title">Overview</h1>
-                    <p class="text-muted" style="font-size: 0.875rem;">Welcome back, Admin</p>
-                </div>
-                <div class="header-actions">
-                    <span id="admin-email" style="font-size: 0.875rem; font-weight: 500; margin-right: 1rem;"></span>
+            <header
+                style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 2rem; flex-wrap: wrap; gap: 1rem;">
+                <div style="display: flex; align-items: center; gap: 1rem;">
+                    <button id="mobile-toggle"
+                        style="display: none; background: none; border: none; cursor: pointer; color: var(--text-main);">
+                        <i data-lucide="menu" style="width: 24px; height: 24px;"></i>
+                    </button>
+                    <div>
+                        <h1 style="font-size: 1.5rem; font-weight: 800; letter-spacing: -0.025em;">Admin Dashboard</h1>
+                        <p style="color: var(--text-muted); font-size: 0.875rem;">Welcome back, <span id="admin-email"
+                                style="font-weight: 600; color: var(--primary-color);">admin</span></p>
+                    </div>
                 </div>
             </header>
 
@@ -95,6 +102,35 @@
                 <div class="stat-card">
                     <div class="stat-label">Pending Payments</div>
                     <div class="stat-value" id="stat-payments" style="color: var(--status-info);">0</div>
+                </div>
+                <div class="stat-card" style="border-left: 4px solid var(--accent);">
+                    <div style="display: flex; justify-content: space-between; align-items: start;">
+                        <div>
+                            <p
+                                style="color: var(--text-muted); font-size: 0.75rem; font-weight: 600; text-transform: uppercase;">
+                                Expiring Soon</p>
+                            <h3 style="font-size: 1.5rem; font-weight: 700; margin-top: 0.25rem;" id="stat-expiring">0
+                            </h3>
+                        </div>
+                        <div style="background: #fef3c7; padding: 0.5rem; border-radius: 0.5rem;">
+                            <i data-lucide="alert-triangle" style="color: #d97706; width: 20px; height: 20px;"></i>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="stat-card" style="border-left: 4px solid #f97316;">
+                    <div style="display: flex; justify-content: space-between; align-items: start;">
+                        <div>
+                            <p
+                                style="color: var(--text-muted); font-size: 0.75rem; font-weight: 600; text-transform: uppercase;">
+                                Hidden</p>
+                            <h3 style="font-size: 1.5rem; font-weight: 700; margin-top: 0.25rem;" id="stat-hidden">0
+                            </h3>
+                        </div>
+                        <div style="background: #ffedd5; padding: 0.5rem; border-radius: 0.5rem;">
+                            <i data-lucide="eye-off" style="color: #ea580c; width: 20px; height: 20px;"></i>
+                        </div>
+                    </div>
                 </div>
             </section>
 
@@ -171,6 +207,23 @@
     </div>
 
     <div id="toast-container"></div>
+
+    <!-- Session Timeout Modal -->
+    <div id="timeout-modal" class="modal-overlay hidden" style="z-index: 10000; background: rgba(0,0,0,0.8);">
+        <div class="modal-content" style="max-width: 400px; text-align: center;">
+            <div style="margin-bottom: 1.5rem;">
+                <div
+                    style="background: #fef2f2; width: 64px; height: 64px; border-radius: 50%; display: flex; align-items: center; justify-content: center; margin: 0 auto 1rem;">
+                    <i data-lucide="clock" style="color: var(--status-rejected); width: 32px; height: 32px;"></i>
+                </div>
+                <h2 style="font-size: 1.25rem; font-weight: 700;">Session Expiring Soon</h2>
+                <p style="color: var(--text-muted); margin-top: 0.5rem;">You have been inactive for a while. You will be
+                    logged out in <span id="timeout-countdown"
+                        style="font-weight: 800; color: var(--status-rejected);">60</span> seconds.</p>
+            </div>
+            <button id="stay-logged-in" class="btn-primary" style="width: 100%;">I'm still here</button>
+        </div>
+    </div>
 
     <!-- Scripts -->
     <script type="module" src="js/app.js"></script>

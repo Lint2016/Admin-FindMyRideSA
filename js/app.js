@@ -61,18 +61,26 @@ async function initDashboard(user) {
         searchInput.addEventListener('input', (e) => {
             const term = e.target.value.toLowerCase().trim();
             const filtered = allProviders.filter(p => {
-                const name = (p.fullName || p.name || "").toLowerCase();
+                const name = (p.fullName || p.name || p.businessName || "").toLowerCase();
                 const phone = (p.phoneNumber || p.phone || "").toLowerCase();
                 return name.includes(term) || phone.includes(term);
             });
 
-            if (isPaymentView) {
-                renderPaymentTable(filtered, `No payments found matching "${term}"`);
+            if (isHiddenView) {
+                renderHiddenTable(filtered, `No hidden providers matching "${term}"`);
+            } else if (isPaymentView) {
+                renderPaymentTable(filtered, currentFilter, `No payments matching "${term}"`);
             } else {
-                renderProviderTable(filtered, `No providers found matching "${term}"`);
+                renderProviderTable(filtered, `No providers matching "${term}"`);
             }
         });
     }
+
+    // Init Session Timeout
+    setupSessionTimeout();
+
+    // Init Mobile Sidebar
+    setupMobileSidebar();
 }
 
 async function refreshMetrics() {
@@ -81,6 +89,16 @@ async function refreshMetrics() {
     updateStat("stat-pending", metrics.pending);
     updateStat("stat-active", metrics.active);
     updateStat("stat-payments", metrics.paymentsPending);
+    updateStat("stat-expiring", metrics.expiringSoon);
+
+    // For hidden count, if not in metrics, we fetch or calculate
+    if (metrics.hidden !== undefined) {
+        updateStat("stat-hidden", metrics.hidden);
+    } else {
+        // Fallback: fetch hidden providers count if needed, or 0
+        const hidden = await getHiddenProviders();
+        updateStat("stat-hidden", hidden.length);
+    }
 
     // Render sidebar badges
     renderSidebarBadges(metrics);
@@ -89,6 +107,7 @@ async function refreshMetrics() {
     renderAlertBanner(metrics);
 }
 
+// --- Helpers ---
 function renderSidebarBadges(metrics) {
     const badges = [
         { id: 'filter-pending', count: metrics.pending },
@@ -216,7 +235,7 @@ function setupDashboardFilters() {
                 isHiddenView = filter.isHidden;
                 isAuditView = filter.isAudit || false;
                 currentFilter = filter.status;
-                if (searchWrapper) searchWrapper.style.display = (isPaymentView || isAuditView) ? 'block' : 'none';
+                if (searchWrapper) searchWrapper.style.display = (isPaymentView || isAuditView || isHiddenView || filter.id === 'filter-dashboard') ? 'block' : 'none';
                 if (searchInput) searchInput.value = '';
 
                 const pageTitle = document.getElementById('page-title');
@@ -1404,19 +1423,39 @@ function exportTableToPDF() {
 
     const headers = [];
     document.querySelectorAll('#tableHead th').forEach((th, i) => {
-        if (i === 0 && th.querySelector('input')) return;
-        headers.push(th.textContent.trim());
+        const text = th.textContent.trim();
+        // Skip checkbox and Action columns
+        if ((i === 0 && th.querySelector('input')) || text === 'Action') return;
+        headers.push(text);
     });
 
     const data = allProviders.map(p => {
         const name = p.fullName || p.name || p.businessName || 'N/A';
+
+        if (isAuditView) {
+            const timestamp = formatDate(p.timestamp?.toDate());
+            const details = p.details ? JSON.stringify(p.details) : 'N/A';
+            return [timestamp, p.action || 'N/A', details, p.adminEmail || 'N/A'];
+        }
+
         if (isHiddenView) {
             return [name, (p.hiddenReasons || []).join(', '), p.availabilityStatus || 'N/A', p.status || 'N/A'];
-        } else if (isPaymentView) {
-            return [name, p.phoneNumber || 'N/A', 'Registration', 'R 200', p.paymentStatus || 'N/A'];
-        } else {
-            return [name, p.serviceArea || p.city || 'N/A', 'Search', p.paymentStatus || 'N/A', p.status || 'N/A'];
         }
+
+        if (isPaymentView) {
+            if (currentFilter === 'sub') {
+                return [name, formatDate(p.subscriptionEndDate), (p.status || 'N/A').toUpperCase(), formatDate(p.lastPaymentDate), 'MONTHLY'];
+            } else {
+                return [name, p.phoneNumber || 'N/A', 'Registration', 'R 99', (p.paymentStatus || 'N/A').toUpperCase()];
+            }
+        }
+
+        // Default View
+        const area = getArea(p);
+        const sourceData = getSource(p);
+        const sourceStr = typeof sourceData === 'object' ? (sourceData.type || sourceData.referralSource || 'Search') : sourceData;
+
+        return [name, area, sourceStr, (p.paymentStatus || 'N/A').toUpperCase(), (p.status || 'N/A').toUpperCase()];
     });
 
     doc.autoTable({
@@ -1464,5 +1503,108 @@ function sortProviders(key) {
     showToast(`Sorted by ${key} (${sortConfig.direction})`);
 }
 
+// --- Mobile Sidebar & Session Management ---
 
+function setupMobileSidebar() {
+    const toggle = document.getElementById('mobile-toggle');
+    const sidebar = document.getElementById('sidebar');
+    const overlay = document.getElementById('mobile-overlay');
 
+    if (!toggle || !sidebar || !overlay) return;
+
+    const toggleOpen = () => {
+        sidebar.classList.toggle('open');
+        const isOpen = sidebar.classList.contains('open');
+        overlay.style.display = isOpen ? 'block' : 'none';
+
+        // Change icon based on state
+        const icon = toggle.querySelector('i');
+        if (icon) {
+            icon.setAttribute('data-lucide', isOpen ? 'x' : 'menu');
+            if (window.lucide) window.lucide.createIcons();
+        }
+    };
+
+    toggle.addEventListener('click', toggleOpen);
+    overlay.addEventListener('click', toggleOpen);
+
+    // Close on nav click (mobile)
+    document.querySelectorAll('.nav-link').forEach(link => {
+        link.addEventListener('click', () => {
+            if (window.innerWidth <= 1024) {
+                sidebar.classList.remove('open');
+                overlay.style.display = 'none';
+            }
+        });
+    });
+}
+
+function setupSessionTimeout() {
+    const TIMEOUT_MS = 30 * 60 * 1000; // 30 minutes idle
+    const WARNING_MS = 28 * 60 * 1000; // Warn after 28 mins
+
+    let idleTimer;
+    let warningTimer;
+    let countdownInterval;
+
+    const resetTimers = () => {
+        clearTimeout(idleTimer);
+        clearTimeout(warningTimer);
+        if (countdownInterval) clearInterval(countdownInterval);
+
+        hideTimeoutModal();
+
+        warningTimer = setTimeout(showTimeoutWarning, WARNING_MS);
+        idleTimer = setTimeout(forceLogout, TIMEOUT_MS);
+    };
+
+    const showTimeoutWarning = () => {
+        const modal = document.getElementById('timeout-modal');
+        const countdownEl = document.getElementById('timeout-countdown');
+        if (!modal) return;
+
+        modal.classList.remove('hidden');
+        let secondsLeft = 120;
+        if (countdownEl) countdownEl.textContent = secondsLeft;
+
+        countdownInterval = setInterval(() => {
+            secondsLeft--;
+            if (countdownEl) countdownEl.textContent = secondsLeft;
+            if (secondsLeft <= 0) clearInterval(countdownInterval);
+        }, 1000);
+    };
+
+    const hideTimeoutModal = () => {
+        const modal = document.getElementById('timeout-modal');
+        if (modal) modal.classList.add('hidden');
+    };
+
+    const forceLogout = async () => {
+        showToast("Session expired. Logging out...", "warning");
+        setTimeout(async () => {
+            await logout();
+            window.location.href = "index.html";
+        }, 2000);
+    };
+
+    // User interaction listeners
+    ['mousedown', 'mousemove', 'keypress', 'scroll', 'touchstart'].forEach(evt => {
+        document.addEventListener(evt, resetTimers, true);
+    });
+
+    document.getElementById('stay-logged-in')?.addEventListener('click', resetTimers);
+
+    // Initial start
+    resetTimers();
+}
+
+// Assuming an initDashboard function exists elsewhere in the code
+// This part is an addition to an existing initDashboard function
+/*
+function initDashboard() {
+    // ... existing calls
+    setupMobileSidebar();
+    setupSessionTimeout();
+    // ... other calls
+}
+*/
