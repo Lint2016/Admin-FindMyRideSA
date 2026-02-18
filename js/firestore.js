@@ -11,7 +11,9 @@ import {
     doc,
     getDoc,
     updateDoc,
-    startAfter
+    startAfter,
+    addDoc,
+    serverTimestamp
 } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
 import { app } from "./firebase-config.js";
 
@@ -23,6 +25,9 @@ const db = getFirestore(app);
 export async function getDashboardMetrics() {
     try {
         const providersRef = collection(db, "providers");
+        const now = new Date();
+        const thirtyDaysFromNow = new Date();
+        thirtyDaysFromNow.setDate(now.getDate() + 30);
 
         // Use parallel promises for efficiency
         const [totalCount, pendingCount, activeCount] = await Promise.all([
@@ -31,16 +36,26 @@ export async function getDashboardMetrics() {
             getCountFromServer(query(providersRef, where("status", "==", "active")))
         ]);
 
+        // For expirations, we'll do a simple query for one field and combine counts if needed,
+        // or fetch recent active ones to check. For now, let's fetch those with PrDP expiring soon.
+        // NOTE: This might need an index.
+        const expiringPrdpQuery = query(
+            providersRef,
+            where("documents.prdpExpiry", ">", now.toISOString()),
+            where("documents.prdpExpiry", "<=", thirtyDaysFromNow.toISOString())
+        );
+        const expiringPrdpSnap = await getCountFromServer(expiringPrdpQuery);
+
         return {
             total: totalCount.data().count,
             pending: pendingCount.data().count,
             active: activeCount.data().count,
-            // Payments check might depend on a specific field or another collection
+            expiringSoon: expiringPrdpSnap.data().count,
             paymentsPending: 0 // Placeholder logic
         };
     } catch (error) {
         console.error("Error fetching metrics:", error);
-        return { total: 0, pending: 0, active: 0, paymentsPending: 0 };
+        return { total: 0, pending: 0, active: 0, expiringSoon: 0, paymentsPending: 0 };
     }
 }
 
@@ -307,3 +322,36 @@ export async function confirmSubscriptionPayment(id) {
         throw error;
     }
 }
+
+/**
+ * Logs an administrative activity
+ */
+export async function logActivity(action, details) {
+    try {
+        const logsRef = collection(db, "audit_logs");
+        await addDoc(logsRef, {
+            action,
+            details,
+            adminEmail: details.adminEmail || "system",
+            timestamp: serverTimestamp()
+        });
+    } catch (error) {
+        console.error("Error logging activity:", error);
+    }
+}
+
+/**
+ * Fetches recent activity logs
+ */
+export async function getActivityLogs(limitCount = 50) {
+    try {
+        const logsRef = collection(db, "audit_logs");
+        const q = query(logsRef, orderBy("timestamp", "desc"), limit(limitCount));
+        const snapshot = await getDocs(q);
+        return snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+    } catch (error) {
+        console.error("Error fetching activity logs:", error);
+        return [];
+    }
+}
+

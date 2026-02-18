@@ -1,6 +1,6 @@
 // Main Application Controller
 import { login, logout, initAuthGuard } from "./auth.js";
-import { getDashboardMetrics, getRecentProviders, getProviderById, updateProviderStatus, getPaginatedReviews, confirmSubscriptionPayment, getHiddenProviders } from "./firestore.js";
+import { getDashboardMetrics, getRecentProviders, getProviderById, updateProviderStatus, getPaginatedReviews, confirmSubscriptionPayment, getHiddenProviders, logActivity, getActivityLogs } from "./firestore.js";
 
 // DOM Elements
 const loginForm = document.getElementById("loginForm");
@@ -15,6 +15,8 @@ let allProviders = []; // Global store for client-side filtering
 let currentFilter = null;
 let isPaymentView = false;
 let isHiddenView = false;
+let isAuditView = false;
+let selectedProviders = []; // IDs for bulk actions
 
 // Profile Page Elements
 const profileName = document.getElementById("provider-name");
@@ -78,6 +80,57 @@ async function refreshMetrics() {
     updateStat("stat-pending", metrics.pending);
     updateStat("stat-active", metrics.active);
     updateStat("stat-payments", metrics.paymentsPending);
+
+    // Render sidebar badges
+    renderSidebarBadges(metrics);
+
+    // Render alert banner
+    renderAlertBanner(metrics);
+}
+
+function renderSidebarBadges(metrics) {
+    const badges = [
+        { id: 'filter-pending', count: metrics.pending },
+        { id: 'filter-hidden', count: 0 }, // We don't have a fast count for this yet, maybe fetch later
+    ];
+
+    badges.forEach(badge => {
+        const btn = document.getElementById(badge.id);
+        if (btn && badge.count > 0) {
+            // Remove existing badge if any
+            const existing = btn.querySelector('.sidebar-badge');
+            if (existing) existing.remove();
+
+            const badgeEl = document.createElement('span');
+            badgeEl.className = 'sidebar-badge';
+            badgeEl.style.cssText = "background: var(--status-rejected); color: white; border-radius: 10px; padding: 0.1rem 0.5rem; font-size: 0.7rem; margin-left: auto; font-weight: 700;";
+            badgeEl.textContent = badge.count;
+            btn.appendChild(badgeEl);
+        }
+    });
+}
+
+function renderAlertBanner(metrics) {
+    const container = document.getElementById('alert-banner-container');
+    if (!container) return;
+
+    let alerts = [];
+    if (metrics.pending > 5) alerts.push({ type: 'warning', msg: `${metrics.pending} providers are awaiting approval.` });
+    if (metrics.expiringSoon > 0) alerts.push({ type: 'danger', msg: `🚨 ${metrics.expiringSoon} providers have documents expiring within 30 days.` });
+
+    if (alerts.length > 0) {
+        container.innerHTML = alerts.map(a => `
+            <div style="padding: 0.75rem 1.25rem; background: ${a.type === 'danger' ? '#fee2e2' : '#fef3c7'}; border-left: 4px solid ${a.type === 'danger' ? '#ef4444' : '#f59e0b'}; border-radius: var(--radius-md); color: ${a.type === 'danger' ? '#991b1b' : '#92400e'}; font-size: 0.875rem; font-weight: 600; margin-bottom: 0.5rem; display: flex; align-items: center; gap: 0.75rem;">
+                <i data-lucide="${a.type === 'danger' ? 'alert-octagon' : 'alert-triangle'}" style="width: 18px; height: 18px;"></i>
+                ${a.msg}
+            </div>
+        `).join('');
+        container.style.display = 'block';
+        if (window.lucide) window.lucide.createIcons();
+    } else {
+        container.style.display = 'none';
+        container.innerHTML = '';
+    }
 }
 
 function setupDashboardFilters() {
@@ -86,6 +139,7 @@ function setupDashboardFilters() {
         { id: 'filter-pending', status: 'pending', title: 'Pending Providers', tableTitle: 'Providers Awaiting Approval', isPayments: false, isHidden: false },
         { id: 'filter-active', status: 'active', title: 'Active Providers', tableTitle: 'Live Service Providers', isPayments: false, isHidden: false },
         { id: 'filter-hidden', status: 'hidden', title: 'Hidden Providers', tableTitle: 'Providers Hidden from Search', isPayments: false, isHidden: true },
+        { id: 'filter-audit', status: 'audit', title: 'Audit Log', tableTitle: 'System Activity History', isPayments: false, isHidden: false, isAudit: true },
         { id: 'filter-payments', status: null, title: 'Payments', tableTitle: 'Financial Overview', isPayments: true, isHidden: false },
         { id: 'filter-pay-reg', status: 'reg', title: 'Registration Payments', tableTitle: 'Provider Registration Fees', isPayments: true, isHidden: false },
         { id: 'filter-pay-sub', status: 'sub', title: 'Subscription Payments', tableTitle: 'Monthly Subscription Renewals', isPayments: true, isHidden: false }
@@ -109,8 +163,9 @@ function setupDashboardFilters() {
                 // Update View State
                 isPaymentView = filter.isPayments;
                 isHiddenView = filter.isHidden;
+                isAuditView = filter.isAudit || false;
                 currentFilter = filter.status;
-                if (searchWrapper) searchWrapper.style.display = isPaymentView ? 'block' : 'none';
+                if (searchWrapper) searchWrapper.style.display = (isPaymentView || isAuditView) ? 'block' : 'none';
                 if (searchInput) searchInput.value = '';
 
                 const pageTitle = document.getElementById('page-title');
@@ -119,15 +174,21 @@ function setupDashboardFilters() {
                 if (tableTitle) tableTitle.textContent = filter.tableTitle;
 
                 // Update Table Header
-                updateTableHeader(isPaymentView, currentFilter, isHiddenView);
+                updateTableHeader(isPaymentView, currentFilter, isHiddenView, isAuditView);
+
+                // Clear selection on filter change
+                clearSelection();
 
                 // Show loading state in table
                 if (providerTableBody) {
-                    providerTableBody.innerHTML = '<tr><td colspan="6" style="text-align: center; padding: 2rem;">Loading data...</td></tr>';
+                    providerTableBody.innerHTML = '<tr><td colspan="7" style="text-align: center; padding: 2rem;">Loading data...</td></tr>';
                 }
 
                 // Fetch and render
-                if (isHiddenView) {
+                if (isAuditView) {
+                    const logs = await getActivityLogs(100);
+                    renderActivityLogTable(logs);
+                } else if (isHiddenView) {
                     allProviders = await getHiddenProviders();
                     renderHiddenTable(allProviders);
                 } else if (isPaymentView) {
@@ -150,13 +211,25 @@ function setupDashboardFilters() {
     });
 }
 
-function updateTableHeader(isPayments, paymentType = null, isHidden = false) {
+function updateTableHeader(isPayments, paymentType = null, isHidden = false, isAudit = false) {
     const tableHead = document.getElementById('tableHead');
     if (!tableHead) return;
 
-    if (isHidden) {
+    if (isAudit) {
         tableHead.innerHTML = `
             <tr>
+                <th style="padding-left: 1.5rem;">Timestamp</th>
+                <th>Action</th>
+                <th>Details</th>
+                <th>Admin</th>
+            </tr>
+        `;
+    } else if (isHidden) {
+        tableHead.innerHTML = `
+            <tr>
+                <th style="width: 40px; padding-left: 1.5rem;">
+                    <input type="checkbox" id="selectAllProviders" style="cursor: pointer;">
+                </th>
                 <th>Provider Name</th>
                 <th>Hidden Reason(s)</th>
                 <th>Availability</th>
@@ -168,6 +241,9 @@ function updateTableHeader(isPayments, paymentType = null, isHidden = false) {
         if (paymentType === 'sub') {
             tableHead.innerHTML = `
                 <tr>
+                    <th style="width: 40px; padding-left: 1.5rem;">
+                        <input type="checkbox" id="selectAllProviders" style="cursor: pointer;">
+                    </th>
                     <th>Provider Name</th>
                     <th>Subscription End</th>
                     <th>Status</th>
@@ -179,6 +255,9 @@ function updateTableHeader(isPayments, paymentType = null, isHidden = false) {
         } else {
             tableHead.innerHTML = `
                 <tr>
+                    <th style="width: 40px; padding-left: 1.5rem;">
+                        <input type="checkbox" id="selectAllProviders" style="cursor: pointer;">
+                    </th>
                     <th>Provider Name</th>
                     <th>Phone Number</th>
                     <th>Payment Type</th>
@@ -191,6 +270,9 @@ function updateTableHeader(isPayments, paymentType = null, isHidden = false) {
     } else {
         tableHead.innerHTML = `
             <tr>
+                <th style="width: 40px; padding-left: 1.5rem;">
+                    <input type="checkbox" id="selectAllProviders" style="cursor: pointer;">
+                </th>
                 <th>Provider Name</th>
                 <th>Service Area</th>
                 <th>Source</th>
@@ -199,6 +281,12 @@ function updateTableHeader(isPayments, paymentType = null, isHidden = false) {
                 <th>Action</th>
             </tr>
         `;
+    }
+
+    // Re-bind select all
+    const selectAll = document.getElementById('selectAllProviders');
+    if (selectAll) {
+        selectAll.addEventListener('change', (e) => toggleSelectAll(e.target.checked));
     }
 }
 
@@ -286,6 +374,30 @@ function renderProfileData(provider) {
 
     // Monthly Subscription
     renderSubscriptionData(provider);
+
+    // Initial Admin Notes
+    const notesEl = document.getElementById("admin-notes");
+    if (notesEl) notesEl.value = provider.adminNotes || "";
+
+    const saveNotesBtn = document.getElementById("saveNotesBtn");
+    if (saveNotesBtn) {
+        saveNotesBtn.onclick = async () => {
+            saveNotesBtn.disabled = true;
+            saveNotesBtn.textContent = "Saving...";
+            try {
+                const notes = notesEl.value.trim();
+                await handleStatusUpdate(providerId, { adminNotes: notes }, "Notes Saved", "Internal notes updated successfully.");
+                saveNotesBtn.textContent = "Saved!";
+                setTimeout(() => {
+                    saveNotesBtn.disabled = false;
+                    saveNotesBtn.textContent = "Save Notes";
+                }, 2000);
+            } catch (error) {
+                saveNotesBtn.disabled = false;
+                saveNotesBtn.textContent = "Save Notes";
+            }
+        };
+    }
 
     // Re-init icons for the phone link
     if (window.lucide) window.lucide.createIcons();
@@ -536,6 +648,15 @@ function setupProfileActions(providerId) {
 async function handleStatusUpdate(id, updates, title = "Update Success", message = "Provider information has been updated.") {
     try {
         await updateProviderStatus(id, updates);
+
+        // Audit Log
+        const adminEmail = document.getElementById("admin-email")?.textContent || "admin";
+        await logActivity("PROVIDER_UPDATE", {
+            providerId: id,
+            updates: Object.keys(updates),
+            adminEmail
+        });
+
         showSuccessModal(title, message);
     } catch (error) {
         alert("Error updating provider: " + error.message);
@@ -798,8 +919,13 @@ function renderProviderTable(providers, emptyMessage = "No providers found.") {
         const area = getArea(provider);
         const sourceData = getSource(provider);
 
+        const isSelected = selectedProviders.includes(provider.id);
+
         return `
             <tr>
+                <td style="padding-left: 1.5rem;">
+                    <input type="checkbox" class="provider-checkbox" data-id="${provider.id}" ${isSelected ? 'checked' : ''} style="cursor: pointer;">
+                </td>
                 <td style="font-weight: 500;">${name}</td>
                 <td>${area}</td>
                 <td>${renderSourceBadge(sourceData)}</td>
@@ -813,6 +939,11 @@ function renderProviderTable(providers, emptyMessage = "No providers found.") {
             </tr>
         `;
     }).join('');
+
+    // Bind checkbox events
+    bindCheckboxEvents();
+
+    if (window.lucide) window.lucide.createIcons();
 }
 
 function renderPaymentTable(providers, paymentType = 'reg', emptyMessage = "No payment records found.") {
@@ -851,15 +982,20 @@ function renderPaymentTable(providers, paymentType = 'reg', emptyMessage = "No p
             if (subStatus === 'Active') statusClass = 'badge-active';
             if (subStatus === 'Grace') statusClass = 'badge-warning';
 
+            const isSelected = selectedProviders.includes(p.id);
+
             return `
-                <tr style="cursor: pointer;" onclick="viewProfile('${p.id}')">
+                <tr>
+                    <td style="padding-left: 1.5rem;">
+                        <input type="checkbox" class="provider-checkbox" data-id="${p.id}" ${isSelected ? 'checked' : ''} style="cursor: pointer;">
+                    </td>
                     <td style="font-weight: 500;">${name}</td>
                     <td>${formatDate(p.subscriptionEndDate)}</td>
                     <td><span class="badge ${statusClass}">${subStatus.toUpperCase()}</span></td>
                     <td>${formatDate(p.lastPaymentDate)}</td>
                     <td><span class="badge badge-info" style="font-size: 0.7rem;">MONTHLY</span></td>
                     <td>
-                        <button class="btn-primary" style="padding: 0.4rem 0.8rem; font-size: 0.75rem; width: auto;">
+                        <button class="btn-primary" style="padding: 0.4rem 0.8rem; font-size: 0.75rem; width: auto;" onclick="viewProfile('${p.id}')">
                             Review
                         </button>
                     </td>
@@ -869,16 +1005,20 @@ function renderPaymentTable(providers, paymentType = 'reg', emptyMessage = "No p
             const phone = p.phoneNumber || p.phone || 'N/A';
             const type = "Registration";
             const amount = "R99";
+            const isSelected = selectedProviders.includes(p.id);
 
             return `
-                <tr style="cursor: pointer;" onclick="viewProfile('${p.id}')">
+                <tr>
+                    <td style="padding-left: 1.5rem;">
+                        <input type="checkbox" class="provider-checkbox" data-id="${p.id}" ${isSelected ? 'checked' : ''} style="cursor: pointer;">
+                    </td>
                     <td style="font-weight: 500;">${name}</td>
                     <td style="color: var(--text-muted);">${phone}</td>
                     <td><span class="badge badge-info" style="font-size: 0.7rem; font-weight: 600;">${type}</span></td>
                     <td style="font-weight: 700;">${p.amountPaid || amount}</td>
                     <td>${renderPaymentBadge(p.paymentStatus)}</td>
                     <td>
-                        <button class="btn-primary" style="padding: 0.4rem 0.8rem; font-size: 0.75rem; width: auto;">
+                        <button class="btn-primary" style="padding: 0.4rem 0.8rem; font-size: 0.75rem; width: auto;" onclick="viewProfile('${p.id}')">
                             Review
                         </button>
                     </td>
@@ -886,6 +1026,11 @@ function renderPaymentTable(providers, paymentType = 'reg', emptyMessage = "No p
             `;
         }
     }).join('');
+
+    // Bind checkbox events
+    bindCheckboxEvents();
+
+    if (window.lucide) window.lucide.createIcons();
 }
 
 /**
@@ -946,8 +1091,13 @@ function renderHiddenTable(providers) {
                 : 'Available';
         const availClass = availLabel === 'Available' ? 'badge-active' : 'badge-rejected';
 
+        const isSelected = selectedProviders.includes(provider.id);
+
         return `
             <tr>
+                <td style="padding-left: 1.5rem;">
+                    <input type="checkbox" class="provider-checkbox" data-id="${provider.id}" ${isSelected ? 'checked' : ''} style="cursor: pointer;">
+                </td>
                 <td style="font-weight: 500;">${name}</td>
                 <td style="max-width: 260px; white-space: normal; line-height: 1.6;">${reasonPills}</td>
                 <td><span class="badge ${availClass}" style="font-size: 0.7rem;">${availLabel.toUpperCase()}</span></td>
@@ -960,6 +1110,9 @@ function renderHiddenTable(providers) {
             </tr>
         `;
     }).join('');
+
+    // Bind checkbox events
+    bindCheckboxEvents();
 
     if (window.lucide) window.lucide.createIcons();
 }
@@ -1031,4 +1184,143 @@ if (logoutBtn) {
 window.viewProfile = (id) => {
     window.location.href = `provider-profile.html?id=${id}`;
 };
+
+// --- Bulk Actions ---
+
+function bindCheckboxEvents() {
+    const checkboxes = document.querySelectorAll('.provider-checkbox');
+    checkboxes.forEach(cb => {
+        cb.addEventListener('change', (e) => {
+            const id = e.target.getAttribute('data-id');
+            if (e.target.checked) {
+                if (!selectedProviders.includes(id)) selectedProviders.push(id);
+            } else {
+                selectedProviders = selectedProviders.filter(sid => sid !== id);
+                // Uncheck select all if one item is unchecked
+                const selectAll = document.getElementById('selectAllProviders');
+                if (selectAll) selectAll.checked = false;
+            }
+            updateBulkActionsToolbar();
+        });
+    });
+}
+
+function toggleSelectAll(checked) {
+    const checkboxes = document.querySelectorAll('.provider-checkbox');
+    checkboxes.forEach(cb => {
+        const id = cb.getAttribute('data-id');
+        cb.checked = checked;
+        if (checked) {
+            if (!selectedProviders.includes(id)) selectedProviders.push(id);
+        } else {
+            selectedProviders = selectedProviders.filter(sid => sid !== id);
+        }
+    });
+    updateBulkActionsToolbar();
+}
+
+function clearSelection() {
+    selectedProviders = [];
+    const selectAll = document.getElementById('selectAllProviders');
+    if (selectAll) selectAll.checked = false;
+    updateBulkActionsToolbar();
+}
+
+function updateBulkActionsToolbar() {
+    const toolbar = document.getElementById('bulk-actions-toolbar');
+    const countEl = document.getElementById('selected-count');
+    if (!toolbar || !countEl) return;
+
+    const count = selectedProviders.length;
+    countEl.textContent = count;
+
+    if (count > 0) {
+        toolbar.style.bottom = '2rem';
+    } else {
+        toolbar.style.bottom = '-100px';
+    }
+}
+
+// Bulk Action Button Events
+document.getElementById('bulkApproveBtn')?.addEventListener('click', () => handleBulkAction('active'));
+document.getElementById('bulkRejectBtn')?.addEventListener('click', () => handleBulkAction('rejected'));
+document.getElementById('bulkCancelBtn')?.addEventListener('click', () => clearSelection());
+
+async function handleBulkAction(newStatus) {
+    const count = selectedProviders.length;
+    if (!confirm(`Are you sure you want to set ${count} providers to ${newStatus.toUpperCase()}?`)) return;
+
+    const btnId = newStatus === 'active' ? 'bulkApproveBtn' : 'bulkRejectBtn';
+    const btn = document.getElementById(btnId);
+    if (btn) {
+        btn.disabled = true;
+        btn.textContent = 'Processing...';
+    }
+
+    try {
+        const adminEmail = document.getElementById("admin-email")?.textContent || "admin";
+
+        // Process in small batches or sequence
+        for (const id of selectedProviders) {
+            await updateProviderStatus(id, { status: newStatus, verified: newStatus === 'active' });
+        }
+
+        await logActivity("BULK_ACTION", {
+            action: `SET_STATUS_${newStatus.toUpperCase()}`,
+            count,
+            providerIds: selectedProviders,
+            adminEmail
+        });
+
+        alert(`Successfully updated ${count} providers.`);
+        location.reload();
+    } catch (error) {
+        alert("Error during bulk action: " + error.message);
+        if (btn) {
+            btn.disabled = false;
+            btn.textContent = newStatus === 'active' ? 'Approve Selected' : 'Reject Selected';
+        }
+    }
+}
+
+// --- Activity Log ---
+
+function renderActivityLogTable(logs) {
+    if (!providerTableBody) return;
+
+    if (logs.length === 0) {
+        providerTableBody.innerHTML = `
+            <tr>
+                <td colspan="4" style="text-align: center; padding: 3rem; color: var(--text-muted);">
+                    No activity logs found.
+                </td>
+            </tr>
+        `;
+        return;
+    }
+
+    providerTableBody.innerHTML = logs.map(log => {
+        const timestamp = log.timestamp ? formatDate(log.timestamp.toDate()) : 'N/A';
+        const action = log.action || 'Unknown';
+        const admin = log.adminEmail || 'Unknown';
+
+        // Details summary
+        let detailStr = '';
+        if (log.details) {
+            if (log.details.providerId) detailStr += `Provider: ${log.details.providerId.substring(0, 8)}... `;
+            if (log.details.updates) detailStr += `Updated: ${log.details.updates.join(', ')} `;
+            if (log.details.count) detailStr += `Items: ${log.details.count} `;
+        }
+
+        return `
+            <tr>
+                <td style="padding-left: 1.5rem; color: var(--text-muted); font-size: 0.8rem;">${timestamp}</td>
+                <td style="font-weight: 600;">${action}</td>
+                <td style="font-size: 0.8rem;">${detailStr}</td>
+                <td>${admin}</td>
+            </tr>
+        `;
+    }).join('');
+}
+
 

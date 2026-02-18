@@ -48,6 +48,11 @@
                         </div>
                     </div>
                 </li>
+                <li class="nav-item">
+                    <a href="#" class="nav-link" id="filter-audit">
+                        <i data-lucide="list"></i> Activity Log
+                    </a>
+                </li>
             </nav>
             <div class="sidebar-footer">
                 <a href="#" id="logoutBtn" class="nav-link">
@@ -67,6 +72,9 @@
                     <span id="admin-email" style="font-size: 0.875rem; font-weight: 500; margin-right: 1rem;"></span>
                 </div>
             </header>
+
+            <!-- Alert Banner Container -->
+            <div id="alert-banner-container" style="margin-bottom: 1.5rem; display: none;"></div>
 
             <!-- Stats Grid -->
             <section class="stats-grid">
@@ -105,6 +113,9 @@
                 <table id="mainTable">
                     <thead id="tableHead">
                         <tr>
+                            <th style="width: 40px; padding-left: 1.5rem;">
+                                <input type="checkbox" id="selectAllProviders" style="cursor: pointer;">
+                            </th>
                             <th>Provider Name</th>
                             <th>Service Area</th>
                             <th>Source</th>
@@ -124,6 +135,27 @@
                 </table>
             </section>
         </main>
+    </div>
+
+    <!-- Bulk Action Toolbar -->
+    <div id="bulk-actions-toolbar"
+        style="position: fixed; bottom: -100px; left: 50%; transform: translateX(-50%); background: white; border: 1px solid var(--border-color); border-radius: var(--radius-lg); box-shadow: 0 10px 25px rgba(0,0,0,0.1); padding: 1rem 2rem; display: flex; align-items: center; gap: 2rem; z-index: 1000; transition: bottom 0.3s ease-out;">
+        <div style="font-size: 0.875rem; font-weight: 600;">
+            <span id="selected-count">0</span> providers selected
+        </div>
+        <div style="display: flex; gap: 0.75rem;">
+            <button class="btn-primary" id="bulkApproveBtn"
+                style="background-color: var(--status-active); font-size: 0.75rem; width: auto; padding: 0.5rem 1rem;">
+                <i data-lucide="check" style="width: 14px; height: 14px; margin-right: 4px;"></i> Approve Selected
+            </button>
+            <button class="btn-primary" id="bulkRejectBtn"
+                style="background-color: var(--status-rejected); font-size: 0.75rem; width: auto; padding: 0.5rem 1rem;">
+                <i data-lucide="x" style="width: 14px; height: 14px; margin-right: 4px;"></i> Reject Selected
+            </button>
+            <button class="btn-ghost" id="bulkCancelBtn" style="font-size: 0.75rem; width: auto; padding: 0.5rem 1rem;">
+                Cancel
+            </button>
+        </div>
     </div>
 
     <!-- Scripts -->
