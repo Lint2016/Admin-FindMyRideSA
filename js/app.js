@@ -1235,6 +1235,26 @@ function renderAvailabilityBadge(status) {
     </span>`;
 }
 
+// --- Password Toggle ---
+const togglePasswordBtn = document.getElementById("togglePassword");
+if (togglePasswordBtn) {
+    togglePasswordBtn.addEventListener("click", () => {
+        const passwordInput = document.getElementById("password");
+        if (!passwordInput) return;
+
+        const type = passwordInput.getAttribute("type") === "password" ? "text" : "password";
+        passwordInput.setAttribute("type", type);
+
+        // Update Icon
+        const icon = togglePasswordBtn.querySelector("i");
+        if (icon) {
+            icon.setAttribute("data-lucide", type === "password" ? "eye" : "eye-off");
+            // Re-render only this icon's host if possible, or all
+            if (window.lucide) window.lucide.createIcons();
+        }
+    });
+}
+
 // --- Auth Handlers ---
 if (loginForm) {
     loginForm.addEventListener("submit", async (e) => {

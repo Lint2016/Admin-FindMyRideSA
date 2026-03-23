@@ -22,7 +22,12 @@
                 </div>
                 <div class="form-group">
                     <label for="password" class="form-label">Password</label>
-                    <input type="password" id="password" class="form-input" required placeholder="••••••••">
+                    <div class="password-wrapper">
+                        <input type="password" id="password" class="form-input" required placeholder="••••••••">
+                        <button type="button" id="togglePassword" class="password-toggle" title="Toggle Password Visibility">
+                            <i data-lucide="eye"></i>
+                        </button>
+                    </div>
                 </div>
                 
                 <button type="submit" class="btn-primary" id="loginBtn">
