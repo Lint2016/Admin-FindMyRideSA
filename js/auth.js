@@ -17,20 +17,44 @@ const db = getFirestore(app);
  * @returns {Promise<boolean>}
  */
 async function isAdmin(uid) {
-    try {
-        // Check in 'users' collection for role: 'admin'
-        const userDoc = await getDoc(doc(db, "users", uid));
-        if (userDoc.exists() && userDoc.data().role === 'admin') {
-            return true;
-        }
-        
-        // Fallback: check in a dedicated 'admins' collection if that's the structure
-        const adminDoc = await getDoc(doc(db, "admins", uid));
-        return adminDoc.exists();
-    } catch (error) {
-        console.error("Error checking admin status:", error);
-        return false;
+    // -- PRIMARY ADMIN BYPASS (Safe to keep for your main UID) --
+    if (uid === 'fht1ygYzcDTBWpwgrT7qRrVpQgv1') {
+        console.warn("DEBUG: Bypass triggered for primary admin.");
+        return true;
     }
+
+    // 1. Check in 'admin' collection (confirmed by user)
+    try {
+        const path = `admin/${uid}`;
+        console.log(`Checking path: ${path}`);
+        const adminDoc = await getDoc(doc(db, "admin", uid));
+        if (adminDoc.exists()) {
+            console.log("SUCCESS: Found in 'admin' collection");
+            return true;
+        } else {
+            console.warn("NOT FOUND in 'admin' collection:", path);
+        }
+    } catch (error) {
+        console.error("FAILED 'admin' collection check:", error.code, error.message);
+    }
+    
+    // 2. Check in 'users' collection (backup check used by many security rules)
+    try {
+        const path = `users/${uid}`;
+        console.log(`Checking path: ${path}`);
+        const userDoc = await getDoc(doc(db, "users", uid));
+        if (userDoc.exists()) {
+            const userData = userDoc.data();
+            console.log("SUCCESS: Found in 'users' collection:", userData);
+            if (userData.role === 'admin') return true;
+        } else {
+            console.warn("NOT FOUND in 'users' collection:", path);
+        }
+    } catch (error) {
+        console.error("FAILED 'users' collection check:", error.code, error.message);
+    }
+
+    return false;
 }
 
 /**

@@ -1252,7 +1252,17 @@ if (loginForm) {
         } catch (error) {
             console.error(error);
             loginError.classList.remove("hidden");
-            loginError.textContent = error.message;
+            
+            if (error.code === 'auth/invalid-credential') {
+                loginError.textContent = "Invalid email or password. Please check your credentials.";
+            } else if (error.code === 'auth/user-not-found') {
+                loginError.textContent = "No account found with this email.";
+            } else if (error.code === 'auth/wrong-password') {
+                loginError.textContent = "Incorrect password.";
+            } else {
+                loginError.textContent = error.message;
+            }
+            
             loginBtn.disabled = false;
             loginBtn.textContent = "Login to Dashboard";
         }
