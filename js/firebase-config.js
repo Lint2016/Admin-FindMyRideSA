@@ -20,7 +20,7 @@ export const app = initializeApp(firebaseConfig);
 
 // Initialize App Check
 // To enable local debugging: Uncomment the next line AND add the token to Firebase Console
-// self.FIREBASE_APPCHECK_DEBUG_TOKEN = true;
+ self.FIREBASE_APPCHECK_DEBUG_TOKEN = true;
 
 export const appCheck = initializeAppCheck(app, {
     provider: new ReCaptchaV3Provider('6LdlaoQsAAAAACcchBLwltRLFjQZFsWP5ukpq9v9'),
